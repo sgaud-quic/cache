@@ -1,0 +1,5421 @@
+From ee23bf1636341ba3ee0fa337b4e5df7bb2312907 Mon Sep 17 00:00:00 2001
+From: Salendarsingh Gaud <sgaud@qti.qualcomm.com>
+Date: Tue, 19 May 2026 00:05:12 +0530
+Subject: [PATCH 2/3] New rr-cache entries from ci-merge
+
+7.1-rc4
+drivers/media/platform/qcom/venus/firmware.c
+
+Signed-off-by: Salendarsingh Gaud <sgaud@qti.qualcomm.com>
+---
+ .../thisimage.1                               | 1753 +++++++++++++++++
+ .../thisimage.1                               |  889 +++++++++
+ .../thisimage                                 |   17 +
+ .../thisimage.1                               |   78 +
+ .../thisimage.1                               |  516 +++++
+ .../thisimage.1                               |  231 +++
+ .../thisimage                                 |  211 ++
+ .../postimage.2                               |  521 +++++
+ .../preimage.1                                |  555 ++++++
+ .../preimage.2                                |  555 ++++++
+ 10 files changed, 5326 insertions(+)
+ create mode 100644 rr-cache/488a7de10c537487713370674221d43204708af5/thisimage.1
+ create mode 100644 rr-cache/530582e986a727413b52389dd339d37c297ced98/thisimage.1
+ create mode 100644 rr-cache/5c9c648f86e4971d5258a85256337b5bb48afe50/thisimage
+ create mode 100644 rr-cache/74b690070b13223cbdda8b9b2dbb34c46fef492b/thisimage.1
+ create mode 100644 rr-cache/7ed380b68642318e0366ba75476d227c624c5f62/thisimage.1
+ create mode 100644 rr-cache/90fe5b28fccb7cabdce5b85e39db73d70d595f30/thisimage.1
+ create mode 100644 rr-cache/ac7a820f6ae871679476b95fecda57fe0113dea2/thisimage
+ create mode 100644 rr-cache/f6310ef252db7727d89a76f4a010b31668ef5719/postimage.2
+ create mode 100644 rr-cache/f6310ef252db7727d89a76f4a010b31668ef5719/preimage.1
+ create mode 100644 rr-cache/f6310ef252db7727d89a76f4a010b31668ef5719/preimage.2
+
+diff --git a/rr-cache/488a7de10c537487713370674221d43204708af5/thisimage.1 b/rr-cache/488a7de10c537487713370674221d43204708af5/thisimage.1
+new file mode 100644
+index 0000000..1aa54ee
+--- /dev/null
++++ b/rr-cache/488a7de10c537487713370674221d43204708af5/thisimage.1
+@@ -0,0 +1,1753 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Qualcomm Peripheral Authentication Service remoteproc driver
++ *
++ * Copyright (C) 2016 Linaro Ltd
++ * Copyright (C) 2014 Sony Mobile Communications AB
++ * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
++ */
++
++#include <linux/clk.h>
++#include <linux/delay.h>
++#include <linux/firmware.h>
++#include <linux/interrupt.h>
++#include <linux/iommu.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/of_address.h>
++#include <linux/of_reserved_mem.h>
++#include <linux/platform_device.h>
++#include <linux/pm_domain.h>
++#include <linux/pm_runtime.h>
++#include <linux/firmware/qcom/qcom_pas.h>
++#include <linux/firmware/qcom/qcom_scm.h>
++#include <linux/regulator/consumer.h>
++#include <linux/remoteproc.h>
++#include <linux/soc/qcom/mdt_loader.h>
++#include <linux/soc/qcom/smem.h>
++#include <linux/soc/qcom/smem_state.h>
++
++#include "qcom_common.h"
++#include "qcom_pil_info.h"
++#include "qcom_q6v5.h"
++#include "remoteproc_internal.h"
++
++#define QCOM_PAS_DECRYPT_SHUTDOWN_DELAY_MS	100
++
++#define MAX_ASSIGN_COUNT 3
++
++struct qcom_pas_data {
++	int crash_reason_smem;
++	const char *firmware_name;
++	const char *dtb_firmware_name;
++	int pas_id;
++	int dtb_pas_id;
++	int lite_pas_id;
++	int lite_dtb_pas_id;
++	unsigned int minidump_id;
++	bool auto_boot;
++	bool decrypt_shutdown;
++
++	char **proxy_pd_names;
++
++	const char *load_state;
++	const char *ssr_name;
++	const char *sysmon_name;
++	int ssctl_id;
++	unsigned int smem_host_id;
++
++	int region_assign_idx;
++	int region_assign_count;
++	bool region_assign_shared;
++	int region_assign_vmid;
++	bool early_boot;
++};
++
++struct qcom_pas {
++	struct device *dev;
++	struct rproc *rproc;
++
++	struct qcom_q6v5 q6v5;
++
++	struct clk *xo;
++	struct clk *aggre2_clk;
++
++	struct regulator *cx_supply;
++	struct regulator *px_supply;
++
++	struct device *proxy_pds[3];
++
++	int proxy_pd_count;
++
++	const char *dtb_firmware_name;
++	int pas_id;
++	int dtb_pas_id;
++	int lite_pas_id;
++	int lite_dtb_pas_id;
++	unsigned int minidump_id;
++	int crash_reason_smem;
++	unsigned int smem_host_id;
++	bool decrypt_shutdown;
++	const char *info_name;
++
++	const struct firmware *firmware;
++	const struct firmware *dtb_firmware;
++
++	struct completion start_done;
++	struct completion stop_done;
++
++	phys_addr_t mem_phys;
++	phys_addr_t dtb_mem_phys;
++	phys_addr_t mem_reloc;
++	phys_addr_t dtb_mem_reloc;
++	phys_addr_t region_assign_phys[MAX_ASSIGN_COUNT];
++
++	void *mem_region;
++
++	size_t mem_size;
++	size_t dtb_mem_size;
++	size_t region_assign_size[MAX_ASSIGN_COUNT];
++
++	int region_assign_idx;
++	int region_assign_count;
++	bool region_assign_shared;
++	int region_assign_vmid;
++	u64 region_assign_owners[MAX_ASSIGN_COUNT];
++
++	struct qcom_rproc_glink glink_subdev;
++	struct qcom_rproc_subdev smd_subdev;
++	struct qcom_rproc_pdm pdm_subdev;
++	struct qcom_rproc_ssr ssr_subdev;
++	struct qcom_sysmon *sysmon;
++
++	struct qcom_pas_context *pas_ctx;
++	struct qcom_pas_context *dtb_pas_ctx;
++};
++
++static void qcom_pas_segment_dump(struct rproc *rproc,
++				  struct rproc_dump_segment *segment,
++				  void *dest, size_t offset, size_t size)
++{
++	struct qcom_pas *pas = rproc->priv;
++	int total_offset;
++
++	total_offset = segment->da + segment->offset + offset - pas->mem_phys;
++	if (total_offset < 0 || total_offset + size > pas->mem_size) {
++		dev_err(pas->dev,
++			"invalid copy request for segment %pad with offset %zu and size %zu)\n",
++			&segment->da, offset, size);
++		memset(dest, 0xff, size);
++		return;
++	}
++
++	memcpy_fromio(dest, pas->mem_region + total_offset, size);
++}
++
++static void qcom_pas_minidump(struct rproc *rproc)
++{
++	struct qcom_pas *pas = rproc->priv;
++
++	if (rproc->dump_conf == RPROC_COREDUMP_DISABLED)
++		return;
++
++	pas->mem_region = ioremap_wc(pas->mem_phys, pas->mem_size);
++	if (!pas->mem_region) {
++		dev_err(pas->dev, "unable to map memory region: %pa+%zx\n",
++			&pas->mem_phys, pas->mem_size);
++		return;
++	}
++
++	qcom_minidump(rproc, pas->minidump_id, qcom_pas_segment_dump);
++	iounmap(pas->mem_region);
++	pas->mem_region = NULL;
++}
++
++static int qcom_pas_pds_enable(struct qcom_pas *pas, struct device **pds,
++			       size_t pd_count)
++{
++	int ret;
++	int i;
++
++	for (i = 0; i < pd_count; i++) {
++		dev_pm_genpd_set_performance_state(pds[i], INT_MAX);
++		ret = pm_runtime_get_sync(pds[i]);
++		if (ret < 0) {
++			pm_runtime_put_noidle(pds[i]);
++			dev_pm_genpd_set_performance_state(pds[i], 0);
++			goto unroll_pd_votes;
++		}
++	}
++
++	return 0;
++
++unroll_pd_votes:
++	for (i--; i >= 0; i--) {
++		dev_pm_genpd_set_performance_state(pds[i], 0);
++		pm_runtime_put(pds[i]);
++	}
++
++	return ret;
++};
++
++static void qcom_pas_pds_disable(struct qcom_pas *pas, struct device **pds,
++				 size_t pd_count)
++{
++	int i;
++
++	for (i = 0; i < pd_count; i++) {
++		dev_pm_genpd_set_performance_state(pds[i], 0);
++		pm_runtime_put(pds[i]);
++	}
++}
++
++static int qcom_pas_shutdown_poll_decrypt(struct qcom_pas *pas)
++{
++	unsigned int retry_num = 50;
++	int ret;
++
++	do {
++		msleep(QCOM_PAS_DECRYPT_SHUTDOWN_DELAY_MS);
++		ret = qcom_pas_shutdown(pas->pas_id);
++	} while (ret == -EINVAL && --retry_num);
++
++	return ret;
++}
++
++static int qcom_pas_unprepare(struct rproc *rproc)
++{
++	struct qcom_pas *pas = rproc->priv;
++
++	/*
++	 * qcom_pas_load() did pass pas_metadata to the SCM driver for storing
++	 * metadata context. It might have been released already if
++	 * auth_and_reset() was successful, but in other cases clean it up
++	 * here.
++	 */
++	qcom_pas_metadata_release(pas->pas_ctx);
++	if (pas->dtb_pas_id)
++		qcom_pas_metadata_release(pas->dtb_pas_ctx);
++
++	return 0;
++}
++
++static int qcom_pas_load(struct rproc *rproc, const struct firmware *fw)
++{
++	struct qcom_pas *pas = rproc->priv;
++	int ret;
++
++	/* Store firmware handle to be used in qcom_pas_start() */
++	pas->firmware = fw;
++
++	if (pas->lite_pas_id)
++		qcom_pas_shutdown(pas->lite_pas_id);
++	if (pas->lite_dtb_pas_id)
++		qcom_pas_shutdown(pas->lite_dtb_pas_id);
++
++	if (pas->dtb_pas_id) {
++		ret = request_firmware(&pas->dtb_firmware, pas->dtb_firmware_name, pas->dev);
++		if (ret) {
++			dev_err(pas->dev, "request_firmware failed for %s: %d\n",
++				pas->dtb_firmware_name, ret);
++			return ret;
++		}
++
++		ret = qcom_mdt_pas_load(pas->dtb_pas_ctx, pas->dtb_firmware,
++					pas->dtb_firmware_name,
++					&pas->dtb_mem_reloc);
++		if (ret)
++			goto release_dtb_metadata;
++	}
++
++	return 0;
++
++release_dtb_metadata:
++<<<<<<<
++	if (pas->dtb_pas_id)
++		qcom_scm_pas_metadata_release(pas->dtb_pas_ctx);
++
++=======
++	qcom_pas_metadata_release(pas->dtb_pas_ctx);
++>>>>>>>
++	release_firmware(pas->dtb_firmware);
++
++	return ret;
++}
++
++static void qcom_pas_unmap_carveout(struct rproc *rproc, phys_addr_t mem_phys, size_t size)
++{
++	if (rproc->has_iommu)
++		iommu_unmap(rproc->domain, mem_phys, size);
++}
++
++static int qcom_pas_map_carveout(struct rproc *rproc, phys_addr_t mem_phys, size_t size)
++{
++	int ret = 0;
++
++	if (rproc->has_iommu)
++		ret = iommu_map(rproc->domain, mem_phys, mem_phys, size,
++				IOMMU_READ | IOMMU_WRITE, GFP_KERNEL);
++	return ret;
++}
++
++static int qcom_pas_start(struct rproc *rproc)
++{
++	struct qcom_pas *pas = rproc->priv;
++	int ret;
++
++	ret = qcom_q6v5_prepare(&pas->q6v5);
++	if (ret)
++		return ret;
++
++	ret = qcom_pas_pds_enable(pas, pas->proxy_pds, pas->proxy_pd_count);
++	if (ret < 0)
++		goto disable_irqs;
++
++	ret = clk_prepare_enable(pas->xo);
++	if (ret)
++		goto disable_proxy_pds;
++
++	ret = clk_prepare_enable(pas->aggre2_clk);
++	if (ret)
++		goto disable_xo_clk;
++
++	if (pas->cx_supply) {
++		ret = regulator_enable(pas->cx_supply);
++		if (ret)
++			goto disable_aggre2_clk;
++	}
++
++	if (pas->px_supply) {
++		ret = regulator_enable(pas->px_supply);
++		if (ret)
++			goto disable_cx_supply;
++	}
++
++	if (pas->dtb_pas_id) {
++		ret = qcom_pas_map_carveout(rproc, pas->dtb_mem_phys, pas->dtb_mem_size);
++		if (ret)
++			goto disable_px_supply;
++
++		ret = qcom_pas_prepare_and_auth_reset(pas->dtb_pas_ctx);
++		if (ret) {
++			dev_err(pas->dev,
++				"failed to authenticate dtb image and release reset\n");
++			goto unmap_dtb_carveout;
++		}
++	}
++
++	ret = qcom_mdt_pas_load(pas->pas_ctx, pas->firmware, rproc->firmware,
++				&pas->mem_reloc);
++	if (ret)
++		goto release_pas_metadata;
++
++	qcom_pil_info_store(pas->info_name, pas->mem_phys, pas->mem_size);
++
++	ret = qcom_pas_map_carveout(rproc, pas->mem_phys, pas->mem_size);
++	if (ret)
++		goto release_pas_metadata;
++
++	ret = qcom_pas_prepare_and_auth_reset(pas->pas_ctx);
++	if (ret) {
++		dev_err(pas->dev,
++			"failed to authenticate image and release reset\n");
++		goto unmap_carveout;
++	}
++
++	ret = qcom_q6v5_wait_for_start(&pas->q6v5, msecs_to_jiffies(5000));
++	if (ret == -ETIMEDOUT) {
++		dev_err(pas->dev, "start timed out\n");
++		qcom_pas_shutdown(pas->pas_id);
++		goto unmap_carveout;
++	}
++
++	qcom_pas_metadata_release(pas->pas_ctx);
++	if (pas->dtb_pas_id)
++		qcom_pas_metadata_release(pas->dtb_pas_ctx);
++
++	/* firmware is used to pass reference from qcom_pas_start(), drop it now */
++	pas->firmware = NULL;
++
++	return 0;
++
++unmap_carveout:
++	qcom_pas_unmap_carveout(rproc, pas->mem_phys, pas->mem_size);
++release_pas_metadata:
++	qcom_pas_metadata_release(pas->pas_ctx);
++	if (pas->dtb_pas_id)
++		qcom_pas_metadata_release(pas->dtb_pas_ctx);
++
++unmap_dtb_carveout:
++	if (pas->dtb_pas_id)
++		qcom_pas_unmap_carveout(rproc, pas->dtb_mem_phys, pas->dtb_mem_size);
++disable_px_supply:
++	if (pas->px_supply)
++		regulator_disable(pas->px_supply);
++disable_cx_supply:
++	if (pas->cx_supply)
++		regulator_disable(pas->cx_supply);
++disable_aggre2_clk:
++	clk_disable_unprepare(pas->aggre2_clk);
++disable_xo_clk:
++	clk_disable_unprepare(pas->xo);
++disable_proxy_pds:
++	qcom_pas_pds_disable(pas, pas->proxy_pds, pas->proxy_pd_count);
++disable_irqs:
++	qcom_q6v5_unprepare(&pas->q6v5);
++
++	/* firmware is used to pass reference from qcom_pas_start(), drop it now */
++	pas->firmware = NULL;
++
++	return ret;
++}
++
++static void qcom_pas_handover(struct qcom_q6v5 *q6v5)
++{
++	struct qcom_pas *pas = container_of(q6v5, struct qcom_pas, q6v5);
++
++	if (pas->px_supply)
++		regulator_disable(pas->px_supply);
++	if (pas->cx_supply)
++		regulator_disable(pas->cx_supply);
++	clk_disable_unprepare(pas->aggre2_clk);
++	clk_disable_unprepare(pas->xo);
++	qcom_pas_pds_disable(pas, pas->proxy_pds, pas->proxy_pd_count);
++}
++
++static int qcom_pas_stop(struct rproc *rproc)
++{
++	struct qcom_pas *pas = rproc->priv;
++	int handover;
++	int ret;
++
++	ret = qcom_q6v5_request_stop(&pas->q6v5, pas->sysmon);
++	if (ret == -ETIMEDOUT)
++		dev_err(pas->dev, "timed out on wait\n");
++
++	ret = qcom_pas_shutdown(pas->pas_id);
++	if (ret && pas->decrypt_shutdown)
++		ret = qcom_pas_shutdown_poll_decrypt(pas);
++
++	if (ret)
++		dev_err(pas->dev, "failed to shutdown: %d\n", ret);
++
++	if (pas->dtb_pas_id) {
++		ret = qcom_pas_shutdown(pas->dtb_pas_id);
++		if (ret)
++			dev_err(pas->dev, "failed to shutdown dtb: %d\n", ret);
++
++		qcom_pas_unmap_carveout(rproc, pas->dtb_mem_phys, pas->dtb_mem_size);
++	}
++
++	qcom_pas_unmap_carveout(rproc, pas->mem_phys, pas->mem_size);
++
++	/*
++	 * qcom_q6v5_prepare is not called in qcom_pas_attach, skip unprepare to
++	 * avoid mismatch.
++	 */
++	if (pas->rproc->state != RPROC_ATTACHED) {
++		handover = qcom_q6v5_unprepare(&pas->q6v5);
++		if (handover)
++			qcom_pas_handover(&pas->q6v5);
++	}
++
++	if (pas->smem_host_id)
++		ret = qcom_smem_bust_hwspin_lock_by_host(pas->smem_host_id);
++
++	return ret;
++}
++
++static void *qcom_pas_da_to_va(struct rproc *rproc, u64 da, size_t len, bool *is_iomem)
++{
++	struct qcom_pas *pas = rproc->priv;
++	int offset;
++
++	offset = da - pas->mem_reloc;
++	if (offset < 0 || offset + len > pas->mem_size)
++		return NULL;
++
++	if (is_iomem)
++		*is_iomem = true;
++
++	return pas->mem_region + offset;
++}
++
++static int qcom_pas_parse_firmware(struct rproc *rproc, const struct firmware *fw)
++{
++	struct qcom_pas *pas = rproc->priv;
++	struct resource_table *table = NULL;
++	size_t output_rt_size;
++	void *output_rt;
++	size_t table_sz;
++	int ret;
++
++	ret = qcom_register_dump_segments(rproc, fw);
++	if (ret) {
++		dev_err(pas->dev, "Error in registering dump segments\n");
++		return ret;
++	}
++
++	if (!rproc->has_iommu)
++		return 0;
++
++	ret = rproc_elf_load_rsc_table(rproc, fw);
++	if (ret)
++		dev_dbg(&rproc->dev, "Failed to load resource table from firmware\n");
++
++	table = rproc->table_ptr;
++	table_sz = rproc->table_sz;
++
++	/*
++	 * The resources consumed by Qualcomm remote processors fall into two categories:
++	 * static (such as the memory carveouts for the rproc firmware) and dynamic (like
++	 * shared memory pools). Both are managed by a Qualcomm hypervisor (such as QHEE
++	 * or Gunyah), if one is present. Otherwise, a resource table must be retrieved
++	 * via an SCM call. That table will list all dynamic resources (if any) and possibly
++	 * the static ones. The static resources may also come from a resource table embedded
++	 * in the rproc firmware instead.
++	 *
++	 * Here, we call rproc_elf_load_rsc_table() to check firmware binary has resources
++	 * or not and if it is not having then we pass NULL and zero as input resource
++	 * table pointer and size respectively to the argument of qcom_pas_get_rsc_table()
++	 * and this is even true for Qualcomm remote processor who does follow remoteproc
++	 * framework.
++	 */
++	output_rt = qcom_pas_get_rsc_table(pas->pas_ctx, table, table_sz, &output_rt_size);
++	ret = IS_ERR(output_rt) ? PTR_ERR(output_rt) : 0;
++	if (ret) {
++		dev_err(pas->dev, "Error in getting resource table: %d\n", ret);
++		return ret;
++	}
++
++	kfree(rproc->cached_table);
++	rproc->cached_table = output_rt;
++	rproc->table_ptr = rproc->cached_table;
++	rproc->table_sz = output_rt_size;
++
++	return ret;
++}
++
++static unsigned long qcom_pas_panic(struct rproc *rproc)
++{
++	struct qcom_pas *pas = rproc->priv;
++
++	return qcom_q6v5_panic(&pas->q6v5);
++}
++
++static void qcom_pas_coredump(struct rproc *rproc)
++{
++	struct qcom_pas *pas = rproc->priv;
++
++	pas->mem_region = ioremap_wc(pas->mem_phys, pas->mem_size);
++	if (!pas->mem_region) {
++		dev_err(pas->dev, "unable to map memory region: %pa+%zx\n",
++			&pas->mem_phys, pas->mem_size);
++		return;
++	}
++
++	rproc_coredump(rproc);
++	iounmap(pas->mem_region);
++	pas->mem_region = NULL;
++}
++
++static int qcom_pas_attach(struct rproc *rproc)
++{
++	int ret;
++	struct qcom_pas *pas = rproc->priv;
++	bool ready_state;
++	bool crash_state;
++
++	pas->q6v5.running = true;
++	ret = irq_get_irqchip_state(pas->q6v5.fatal_irq,
++				    IRQCHIP_STATE_LINE_LEVEL, &crash_state);
++
++	if (ret)
++		goto disable_running;
++
++	if (crash_state) {
++		dev_err(pas->dev, "Subsystem has crashed before driver probe\n");
++		rproc_report_crash(rproc, RPROC_FATAL_ERROR);
++		ret = -EINVAL;
++		goto disable_running;
++	}
++
++	ret = irq_get_irqchip_state(pas->q6v5.ready_irq,
++				    IRQCHIP_STATE_LINE_LEVEL, &ready_state);
++
++	if (ret)
++		goto disable_running;
++
++	if (unlikely(!ready_state)) {
++		/*
++		 * The bootloader may not support early boot, mark the state as
++		 * RPROC_OFFLINE so that the PAS driver can load the firmware and
++		 * start the remoteproc.
++		 */
++		dev_err(pas->dev, "Failed to get subsystem ready interrupt\n");
++		pas->rproc->state = RPROC_OFFLINE;
++		ret = -EINVAL;
++		goto disable_running;
++	}
++
++	ret = qcom_q6v5_ping_subsystem(&pas->q6v5);
++
++	if (ret) {
++		dev_err(pas->dev, "Failed to ping subsystem, assuming device crashed\n");
++		rproc_report_crash(rproc, RPROC_FATAL_ERROR);
++		goto disable_running;
++	}
++
++	pas->q6v5.handover_issued = true;
++
++	return 0;
++
++disable_running:
++	pas->q6v5.running = false;
++
++	return ret;
++}
++
++static const struct rproc_ops qcom_pas_ops = {
++	.unprepare = qcom_pas_unprepare,
++	.start = qcom_pas_start,
++	.stop = qcom_pas_stop,
++	.da_to_va = qcom_pas_da_to_va,
++	.parse_fw = qcom_pas_parse_firmware,
++	.load = qcom_pas_load,
++	.panic = qcom_pas_panic,
++	.coredump = qcom_pas_coredump,
++	.attach = qcom_pas_attach,
++};
++
++static const struct rproc_ops qcom_pas_minidump_ops = {
++	.unprepare = qcom_pas_unprepare,
++	.start = qcom_pas_start,
++	.stop = qcom_pas_stop,
++	.da_to_va = qcom_pas_da_to_va,
++	.parse_fw = qcom_pas_parse_firmware,
++	.load = qcom_pas_load,
++	.panic = qcom_pas_panic,
++	.coredump = qcom_pas_minidump,
++};
++
++static int qcom_pas_init_clock(struct qcom_pas *pas)
++{
++	pas->xo = devm_clk_get(pas->dev, "xo");
++	if (IS_ERR(pas->xo))
++		return dev_err_probe(pas->dev, PTR_ERR(pas->xo),
++				     "failed to get xo clock");
++
++	pas->aggre2_clk = devm_clk_get_optional(pas->dev, "aggre2");
++	if (IS_ERR(pas->aggre2_clk))
++		return dev_err_probe(pas->dev, PTR_ERR(pas->aggre2_clk),
++				     "failed to get aggre2 clock");
++
++	return 0;
++}
++
++static int qcom_pas_init_regulator(struct qcom_pas *pas)
++{
++	pas->cx_supply = devm_regulator_get_optional(pas->dev, "cx");
++	if (IS_ERR(pas->cx_supply)) {
++		if (PTR_ERR(pas->cx_supply) == -ENODEV)
++			pas->cx_supply = NULL;
++		else
++			return PTR_ERR(pas->cx_supply);
++	}
++
++	if (pas->cx_supply)
++		regulator_set_load(pas->cx_supply, 100000);
++
++	pas->px_supply = devm_regulator_get_optional(pas->dev, "px");
++	if (IS_ERR(pas->px_supply)) {
++		if (PTR_ERR(pas->px_supply) == -ENODEV)
++			pas->px_supply = NULL;
++		else
++			return PTR_ERR(pas->px_supply);
++	}
++
++	return 0;
++}
++
++static int qcom_pas_pds_attach(struct device *dev, struct device **devs, char **pd_names)
++{
++	size_t num_pds = 0;
++	int ret;
++	int i;
++
++	if (!pd_names)
++		return 0;
++
++	while (pd_names[num_pds])
++		num_pds++;
++
++	/* Handle single power domain */
++	if (num_pds == 1 && dev->pm_domain) {
++		devs[0] = dev;
++		pm_runtime_enable(dev);
++		return 1;
++	}
++
++	for (i = 0; i < num_pds; i++) {
++		devs[i] = dev_pm_domain_attach_by_name(dev, pd_names[i]);
++		if (IS_ERR_OR_NULL(devs[i])) {
++			ret = PTR_ERR(devs[i]) ? : -ENODATA;
++			goto unroll_attach;
++		}
++	}
++
++	return num_pds;
++
++unroll_attach:
++	for (i--; i >= 0; i--)
++		dev_pm_domain_detach(devs[i], false);
++
++	return ret;
++};
++
++static void qcom_pas_pds_detach(struct qcom_pas *pas, struct device **pds, size_t pd_count)
++{
++	struct device *dev = pas->dev;
++	int i;
++
++	/* Handle single power domain */
++	if (pd_count == 1 && dev->pm_domain) {
++		pm_runtime_disable(dev);
++		return;
++	}
++
++	for (i = 0; i < pd_count; i++)
++		dev_pm_domain_detach(pds[i], false);
++}
++
++static int qcom_pas_alloc_memory_region(struct qcom_pas *pas)
++{
++	struct rproc *rproc = pas->rproc;
++	struct resource res;
++	int ret;
++
++	ret = of_reserved_mem_region_to_resource(pas->dev->of_node, 0, &res);
++	if (ret) {
++		dev_err(pas->dev, "unable to resolve memory-region\n");
++		return ret;
++	}
++
++	pas->mem_phys = pas->mem_reloc = res.start;
++	pas->mem_size = resource_size(&res);
++
++	pas->pas_ctx = devm_qcom_scm_pas_context_alloc(pas->dev, pas->pas_id,
++						       pas->mem_phys, pas->mem_size);
++	if (IS_ERR(pas->pas_ctx))
++		return PTR_ERR(pas->pas_ctx);
++
++	pas->pas_ctx->use_tzmem = rproc->has_iommu;
++	if (!pas->dtb_pas_id)
++		return 0;
++
++	ret = of_reserved_mem_region_to_resource(pas->dev->of_node, 1, &res);
++	if (ret) {
++		dev_err(pas->dev, "unable to resolve dtb memory-region\n");
++		return ret;
++	}
++
++	pas->dtb_mem_phys = pas->dtb_mem_reloc = res.start;
++	pas->dtb_mem_size = resource_size(&res);
++
++	pas->dtb_pas_ctx = devm_qcom_scm_pas_context_alloc(pas->dev, pas->dtb_pas_id,
++							   pas->dtb_mem_phys,
++							   pas->dtb_mem_size);
++	if (IS_ERR(pas->dtb_pas_ctx))
++		return PTR_ERR(pas->dtb_pas_ctx);
++
++	pas->dtb_pas_ctx->use_tzmem = rproc->has_iommu;
++
++	return 0;
++}
++
++static int qcom_pas_assign_memory_region(struct qcom_pas *pas)
++{
++	struct qcom_scm_vmperm perm[MAX_ASSIGN_COUNT];
++	unsigned int perm_size;
++	int offset;
++	int ret;
++
++	if (!pas->region_assign_idx)
++		return 0;
++
++	for (offset = 0; offset < pas->region_assign_count; ++offset) {
++		struct resource res;
++
++		ret = of_reserved_mem_region_to_resource(pas->dev->of_node,
++							 pas->region_assign_idx + offset,
++							 &res);
++		if (ret) {
++			dev_err(pas->dev, "unable to resolve shareable memory-region index %d\n",
++				offset);
++			return ret;
++		}
++
++		if (pas->region_assign_shared)  {
++			perm[0].vmid = QCOM_SCM_VMID_HLOS;
++			perm[0].perm = QCOM_SCM_PERM_RW;
++			perm[1].vmid = pas->region_assign_vmid;
++			perm[1].perm = QCOM_SCM_PERM_RW;
++			perm_size = 2;
++		} else {
++			perm[0].vmid = pas->region_assign_vmid;
++			perm[0].perm = QCOM_SCM_PERM_RW;
++			perm_size = 1;
++		}
++
++		pas->region_assign_phys[offset] = res.start;
++		pas->region_assign_size[offset] = resource_size(&res);
++		pas->region_assign_owners[offset] = BIT(QCOM_SCM_VMID_HLOS);
++
++		ret = qcom_scm_assign_mem(pas->region_assign_phys[offset],
++					  pas->region_assign_size[offset],
++					  &pas->region_assign_owners[offset],
++					  perm, perm_size);
++		if (ret < 0) {
++			dev_err(pas->dev, "assign memory %d failed\n", offset);
++			return ret;
++		}
++	}
++
++	return 0;
++}
++
++static void qcom_pas_unassign_memory_region(struct qcom_pas *pas)
++{
++	struct qcom_scm_vmperm perm;
++	int offset;
++	int ret;
++
++	if (!pas->region_assign_idx || pas->region_assign_shared)
++		return;
++
++	for (offset = 0; offset < pas->region_assign_count; ++offset) {
++		perm.vmid = QCOM_SCM_VMID_HLOS;
++		perm.perm = QCOM_SCM_PERM_RW;
++
++		ret = qcom_scm_assign_mem(pas->region_assign_phys[offset],
++					  pas->region_assign_size[offset],
++					  &pas->region_assign_owners[offset],
++					  &perm, 1);
++		if (ret < 0)
++			dev_err(pas->dev, "unassign memory %d failed\n", offset);
++	}
++}
++
++static int qcom_pas_probe(struct platform_device *pdev)
++{
++	const struct qcom_pas_data *desc;
++	struct qcom_pas *pas;
++	struct rproc *rproc;
++	const char *fw_name, *dtb_fw_name = NULL;
++	const struct rproc_ops *ops = &qcom_pas_ops;
++	int ret;
++
++	desc = of_device_get_match_data(&pdev->dev);
++	if (!desc)
++		return -EINVAL;
++
++	if (!qcom_pas_is_available())
++		return -EPROBE_DEFER;
++
++	fw_name = desc->firmware_name;
++	ret = of_property_read_string(pdev->dev.of_node, "firmware-name",
++				      &fw_name);
++	if (ret < 0 && ret != -EINVAL)
++		return ret;
++
++	if (desc->dtb_firmware_name) {
++		dtb_fw_name = desc->dtb_firmware_name;
++		ret = of_property_read_string_index(pdev->dev.of_node, "firmware-name", 1,
++						    &dtb_fw_name);
++		if (ret < 0 && ret != -EINVAL)
++			return ret;
++	}
++
++	if (desc->minidump_id)
++		ops = &qcom_pas_minidump_ops;
++
++	rproc = devm_rproc_alloc(&pdev->dev, desc->sysmon_name, ops, fw_name, sizeof(*pas));
++
++	if (!rproc) {
++		dev_err(&pdev->dev, "unable to allocate remoteproc\n");
++		return -ENOMEM;
++	}
++
++	rproc->has_iommu = of_property_present(pdev->dev.of_node, "iommus");
++	rproc->auto_boot = desc->auto_boot;
++	rproc_coredump_set_elf_info(rproc, ELFCLASS32, EM_NONE);
++
++	pas = rproc->priv;
++	pas->dev = &pdev->dev;
++	pas->rproc = rproc;
++	pas->minidump_id = desc->minidump_id;
++	pas->pas_id = desc->pas_id;
++	pas->lite_pas_id = desc->lite_pas_id;
++	pas->lite_dtb_pas_id = desc->lite_dtb_pas_id;
++	pas->info_name = desc->sysmon_name;
++	pas->smem_host_id = desc->smem_host_id;
++	pas->decrypt_shutdown = desc->decrypt_shutdown;
++	pas->region_assign_idx = desc->region_assign_idx;
++	pas->region_assign_count = min_t(int, MAX_ASSIGN_COUNT, desc->region_assign_count);
++	pas->region_assign_vmid = desc->region_assign_vmid;
++	pas->region_assign_shared = desc->region_assign_shared;
++	if (dtb_fw_name) {
++		pas->dtb_firmware_name = dtb_fw_name;
++		pas->dtb_pas_id = desc->dtb_pas_id;
++	}
++	platform_set_drvdata(pdev, pas);
++
++	ret = device_init_wakeup(pas->dev, true);
++	if (ret)
++		goto free_rproc;
++
++	ret = qcom_pas_alloc_memory_region(pas);
++	if (ret)
++		goto free_rproc;
++
++	ret = qcom_pas_assign_memory_region(pas);
++	if (ret)
++		goto free_rproc;
++
++	ret = qcom_pas_init_clock(pas);
++	if (ret)
++		goto unassign_mem;
++
++	ret = qcom_pas_init_regulator(pas);
++	if (ret)
++		goto unassign_mem;
++
++	ret = qcom_pas_pds_attach(&pdev->dev, pas->proxy_pds, desc->proxy_pd_names);
++	if (ret < 0)
++		goto unassign_mem;
++	pas->proxy_pd_count = ret;
++
++	ret = qcom_q6v5_init(&pas->q6v5, pdev, rproc, desc->crash_reason_smem,
++			     desc->load_state, qcom_pas_handover);
++	if (ret)
++		goto detach_proxy_pds;
++
++	qcom_add_glink_subdev(rproc, &pas->glink_subdev, desc->ssr_name);
++	qcom_add_smd_subdev(rproc, &pas->smd_subdev);
++	qcom_add_pdm_subdev(rproc, &pas->pdm_subdev);
++	pas->sysmon = qcom_add_sysmon_subdev(rproc, desc->sysmon_name, desc->ssctl_id);
++	if (IS_ERR(pas->sysmon)) {
++		ret = PTR_ERR(pas->sysmon);
++		goto deinit_remove_pdm_smd_glink;
++	}
++
++	qcom_add_ssr_subdev(rproc, &pas->ssr_subdev, desc->ssr_name);
++
++	pas->pas_ctx = devm_qcom_pas_context_alloc(pas->dev, pas->pas_id,
++						   pas->mem_phys, pas->mem_size);
++	if (IS_ERR(pas->pas_ctx)) {
++		ret = PTR_ERR(pas->pas_ctx);
++		goto remove_ssr_sysmon;
++	}
++
++	pas->dtb_pas_ctx = devm_qcom_pas_context_alloc(pas->dev, pas->dtb_pas_id,
++						       pas->dtb_mem_phys,
++						       pas->dtb_mem_size);
++	if (IS_ERR(pas->dtb_pas_ctx)) {
++		ret = PTR_ERR(pas->dtb_pas_ctx);
++		goto remove_ssr_sysmon;
++	}
++
++	pas->pas_ctx->use_tzmem = rproc->has_iommu;
++	pas->dtb_pas_ctx->use_tzmem = rproc->has_iommu;
++
++	if (desc->early_boot) {
++		ret = qcom_q6v5_ping_subsystem_init(&pas->q6v5, pdev);
++		if (ret)
++			dev_warn(&pdev->dev, "Falling back to firmware load\n");
++		else
++			pas->rproc->state = RPROC_DETACHED;
++	}
++
++	ret = rproc_add(rproc);
++	if (ret)
++		goto remove_ssr_sysmon;
++
++	return 0;
++
++remove_ssr_sysmon:
++	qcom_remove_ssr_subdev(rproc, &pas->ssr_subdev);
++	qcom_remove_sysmon_subdev(pas->sysmon);
++deinit_remove_pdm_smd_glink:
++	qcom_remove_pdm_subdev(rproc, &pas->pdm_subdev);
++	qcom_remove_smd_subdev(rproc, &pas->smd_subdev);
++	qcom_remove_glink_subdev(rproc, &pas->glink_subdev);
++	qcom_q6v5_deinit(&pas->q6v5);
++detach_proxy_pds:
++	qcom_pas_pds_detach(pas, pas->proxy_pds, pas->proxy_pd_count);
++unassign_mem:
++	qcom_pas_unassign_memory_region(pas);
++free_rproc:
++	device_init_wakeup(pas->dev, false);
++
++	return ret;
++}
++
++static void qcom_pas_remove(struct platform_device *pdev)
++{
++	struct qcom_pas *pas = platform_get_drvdata(pdev);
++
++	rproc_del(pas->rproc);
++
++	qcom_q6v5_deinit(&pas->q6v5);
++	qcom_pas_unassign_memory_region(pas);
++	qcom_remove_glink_subdev(pas->rproc, &pas->glink_subdev);
++	qcom_remove_sysmon_subdev(pas->sysmon);
++	qcom_remove_smd_subdev(pas->rproc, &pas->smd_subdev);
++	qcom_remove_pdm_subdev(pas->rproc, &pas->pdm_subdev);
++	qcom_remove_ssr_subdev(pas->rproc, &pas->ssr_subdev);
++	qcom_pas_pds_detach(pas, pas->proxy_pds, pas->proxy_pd_count);
++	device_init_wakeup(pas->dev, false);
++}
++
++static const struct qcom_pas_data adsp_resource_init = {
++	.crash_reason_smem = 423,
++	.firmware_name = "adsp.mdt",
++	.pas_id = 1,
++	.auto_boot = true,
++	.ssr_name = "lpass",
++	.sysmon_name = "adsp",
++	.ssctl_id = 0x14,
++};
++
++static const struct qcom_pas_data sa8775p_adsp_resource = {
++	.crash_reason_smem = 423,
++	.firmware_name = "adsp.mbn",
++	.pas_id = 1,
++	.minidump_id = 5,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"lcx",
++		"lmx",
++		NULL
++	},
++	.load_state = "adsp",
++	.ssr_name = "lpass",
++	.sysmon_name = "adsp",
++	.ssctl_id = 0x14,
++};
++
++static const struct qcom_pas_data sdm845_adsp_resource_init = {
++	.crash_reason_smem = 423,
++	.firmware_name = "adsp.mdt",
++	.pas_id = 1,
++	.auto_boot = true,
++	.load_state = "adsp",
++	.ssr_name = "lpass",
++	.sysmon_name = "adsp",
++	.ssctl_id = 0x14,
++};
++
++static const struct qcom_pas_data sm6350_adsp_resource = {
++	.crash_reason_smem = 423,
++	.firmware_name = "adsp.mdt",
++	.pas_id = 1,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"lcx",
++		"lmx",
++		NULL
++	},
++	.load_state = "adsp",
++	.ssr_name = "lpass",
++	.sysmon_name = "adsp",
++	.ssctl_id = 0x14,
++};
++
++static const struct qcom_pas_data sm6375_mpss_resource = {
++	.crash_reason_smem = 421,
++	.firmware_name = "modem.mdt",
++	.pas_id = 4,
++	.minidump_id = 3,
++	.auto_boot = false,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		NULL
++	},
++	.ssr_name = "mpss",
++	.sysmon_name = "modem",
++	.ssctl_id = 0x12,
++};
++
++static const struct qcom_pas_data sm8150_adsp_resource = {
++	.crash_reason_smem = 423,
++	.firmware_name = "adsp.mdt",
++	.pas_id = 1,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		NULL
++	},
++	.load_state = "adsp",
++	.ssr_name = "lpass",
++	.sysmon_name = "adsp",
++	.ssctl_id = 0x14,
++};
++
++static const struct qcom_pas_data sm8250_adsp_resource = {
++	.crash_reason_smem = 423,
++	.firmware_name = "adsp.mdt",
++	.pas_id = 1,
++	.minidump_id = 5,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"lcx",
++		"lmx",
++		NULL
++	},
++	.load_state = "adsp",
++	.ssr_name = "lpass",
++	.sysmon_name = "adsp",
++	.ssctl_id = 0x14,
++};
++
++static const struct qcom_pas_data sm8350_adsp_resource = {
++	.crash_reason_smem = 423,
++	.firmware_name = "adsp.mdt",
++	.pas_id = 1,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"lcx",
++		"lmx",
++		NULL
++	},
++	.load_state = "adsp",
++	.ssr_name = "lpass",
++	.sysmon_name = "adsp",
++	.ssctl_id = 0x14,
++};
++
++static const struct qcom_pas_data msm8996_adsp_resource = {
++	.crash_reason_smem = 423,
++	.firmware_name = "adsp.mdt",
++	.pas_id = 1,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		NULL
++	},
++	.ssr_name = "lpass",
++	.sysmon_name = "adsp",
++	.ssctl_id = 0x14,
++};
++
++static const struct qcom_pas_data cdsp_resource_init = {
++	.crash_reason_smem = 601,
++	.firmware_name = "cdsp.mdt",
++	.pas_id = 18,
++	.auto_boot = true,
++	.ssr_name = "cdsp",
++	.sysmon_name = "cdsp",
++	.ssctl_id = 0x17,
++};
++
++static const struct qcom_pas_data sa8775p_cdsp0_resource = {
++	.crash_reason_smem = 601,
++	.firmware_name = "cdsp0.mbn",
++	.pas_id = 18,
++	.minidump_id = 7,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		"mxc",
++		"nsp",
++		NULL
++	},
++	.load_state = "cdsp",
++	.ssr_name = "cdsp",
++	.sysmon_name = "cdsp",
++	.ssctl_id = 0x17,
++};
++
++static const struct qcom_pas_data sa8775p_cdsp1_resource = {
++	.crash_reason_smem = 633,
++	.firmware_name = "cdsp1.mbn",
++	.pas_id = 30,
++	.minidump_id = 20,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		"mxc",
++		"nsp",
++		NULL
++	},
++	.load_state = "nsp",
++	.ssr_name = "cdsp1",
++	.sysmon_name = "cdsp1",
++	.ssctl_id = 0x20,
++};
++
++static const struct qcom_pas_data sdm845_cdsp_resource_init = {
++	.crash_reason_smem = 601,
++	.firmware_name = "cdsp.mdt",
++	.pas_id = 18,
++	.auto_boot = true,
++	.load_state = "cdsp",
++	.ssr_name = "cdsp",
++	.sysmon_name = "cdsp",
++	.ssctl_id = 0x17,
++};
++
++static const struct qcom_pas_data sm6350_cdsp_resource = {
++	.crash_reason_smem = 601,
++	.firmware_name = "cdsp.mdt",
++	.pas_id = 18,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		"mx",
++		NULL
++	},
++	.load_state = "cdsp",
++	.ssr_name = "cdsp",
++	.sysmon_name = "cdsp",
++	.ssctl_id = 0x17,
++};
++
++static const struct qcom_pas_data sm8150_cdsp_resource = {
++	.crash_reason_smem = 601,
++	.firmware_name = "cdsp.mdt",
++	.pas_id = 18,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		NULL
++	},
++	.load_state = "cdsp",
++	.ssr_name = "cdsp",
++	.sysmon_name = "cdsp",
++	.ssctl_id = 0x17,
++};
++
++static const struct qcom_pas_data sm8250_cdsp_resource = {
++	.crash_reason_smem = 601,
++	.firmware_name = "cdsp.mdt",
++	.pas_id = 18,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		NULL
++	},
++	.load_state = "cdsp",
++	.ssr_name = "cdsp",
++	.sysmon_name = "cdsp",
++	.ssctl_id = 0x17,
++};
++
++static const struct qcom_pas_data sc8280xp_nsp0_resource = {
++	.crash_reason_smem = 601,
++	.firmware_name = "cdsp.mdt",
++	.pas_id = 18,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"nsp",
++		NULL
++	},
++	.ssr_name = "cdsp0",
++	.sysmon_name = "cdsp",
++	.ssctl_id = 0x17,
++};
++
++static const struct qcom_pas_data sc8280xp_nsp1_resource = {
++	.crash_reason_smem = 633,
++	.firmware_name = "cdsp.mdt",
++	.pas_id = 30,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"nsp",
++		NULL
++	},
++	.ssr_name = "cdsp1",
++	.sysmon_name = "cdsp1",
++	.ssctl_id = 0x20,
++};
++
++static const struct qcom_pas_data x1e80100_adsp_resource = {
++	.crash_reason_smem = 423,
++	.firmware_name = "adsp.mdt",
++	.dtb_firmware_name = "adsp_dtb.mdt",
++	.pas_id = 1,
++	.dtb_pas_id = 0x24,
++	.lite_pas_id = 0x1f,
++	.lite_dtb_pas_id = 0x29,
++	.minidump_id = 5,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"lcx",
++		"lmx",
++		NULL
++	},
++	.load_state = "adsp",
++	.ssr_name = "lpass",
++	.sysmon_name = "adsp",
++	.ssctl_id = 0x14,
++};
++
++static const struct qcom_pas_data x1e80100_cdsp_resource = {
++	.crash_reason_smem = 601,
++	.firmware_name = "cdsp.mdt",
++	.dtb_firmware_name = "cdsp_dtb.mdt",
++	.pas_id = 18,
++	.dtb_pas_id = 0x25,
++	.minidump_id = 7,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		"mxc",
++		"nsp",
++		NULL
++	},
++	.load_state = "cdsp",
++	.ssr_name = "cdsp",
++	.sysmon_name = "cdsp",
++	.ssctl_id = 0x17,
++};
++
++static const struct qcom_pas_data sm8350_cdsp_resource = {
++	.crash_reason_smem = 601,
++	.firmware_name = "cdsp.mdt",
++	.pas_id = 18,
++	.minidump_id = 7,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		"mxc",
++		NULL
++	},
++	.load_state = "cdsp",
++	.ssr_name = "cdsp",
++	.sysmon_name = "cdsp",
++	.ssctl_id = 0x17,
++};
++
++static const struct qcom_pas_data sa8775p_gpdsp0_resource = {
++	.crash_reason_smem = 640,
++	.firmware_name = "gpdsp0.mbn",
++	.pas_id = 39,
++	.minidump_id = 21,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		"mxc",
++		NULL
++	},
++	.load_state = "gpdsp0",
++	.ssr_name = "gpdsp0",
++	.sysmon_name = "gpdsp0",
++	.ssctl_id = 0x21,
++};
++
++static const struct qcom_pas_data sa8775p_gpdsp1_resource = {
++	.crash_reason_smem = 641,
++	.firmware_name = "gpdsp1.mbn",
++	.pas_id = 40,
++	.minidump_id = 22,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		"mxc",
++		NULL
++	},
++	.load_state = "gpdsp1",
++	.ssr_name = "gpdsp1",
++	.sysmon_name = "gpdsp1",
++	.ssctl_id = 0x22,
++};
++
++static const struct qcom_pas_data mpss_resource_init = {
++	.crash_reason_smem = 421,
++	.firmware_name = "modem.mdt",
++	.pas_id = 4,
++	.minidump_id = 3,
++	.auto_boot = false,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		"mss",
++		NULL
++	},
++	.load_state = "modem",
++	.ssr_name = "mpss",
++	.sysmon_name = "modem",
++	.ssctl_id = 0x12,
++};
++
++static const struct qcom_pas_data sc8180x_mpss_resource = {
++	.crash_reason_smem = 421,
++	.firmware_name = "modem.mdt",
++	.pas_id = 4,
++	.auto_boot = false,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		NULL
++	},
++	.load_state = "modem",
++	.ssr_name = "mpss",
++	.sysmon_name = "modem",
++	.ssctl_id = 0x12,
++};
++
++static const struct qcom_pas_data msm8996_slpi_resource_init = {
++	.crash_reason_smem = 424,
++	.firmware_name = "slpi.mdt",
++	.pas_id = 12,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"ssc_cx",
++		NULL
++	},
++	.ssr_name = "dsps",
++	.sysmon_name = "slpi",
++	.ssctl_id = 0x16,
++};
++
++static const struct qcom_pas_data sdm845_slpi_resource_init = {
++	.crash_reason_smem = 424,
++	.firmware_name = "slpi.mdt",
++	.pas_id = 12,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"lcx",
++		"lmx",
++		NULL
++	},
++	.load_state = "slpi",
++	.ssr_name = "dsps",
++	.sysmon_name = "slpi",
++	.ssctl_id = 0x16,
++};
++
++static const struct qcom_pas_data wcss_resource_init = {
++	.crash_reason_smem = 421,
++	.firmware_name = "wcnss.mdt",
++	.pas_id = 6,
++	.auto_boot = true,
++	.ssr_name = "mpss",
++	.sysmon_name = "wcnss",
++	.ssctl_id = 0x12,
++};
++
++static const struct qcom_pas_data sdx55_mpss_resource = {
++	.crash_reason_smem = 421,
++	.firmware_name = "modem.mdt",
++	.pas_id = 4,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		"mss",
++		NULL
++	},
++	.ssr_name = "mpss",
++	.sysmon_name = "modem",
++	.ssctl_id = 0x22,
++};
++
++static const struct qcom_pas_data milos_cdsp_resource = {
++	.crash_reason_smem = 601,
++	.firmware_name = "cdsp.mbn",
++	.dtb_firmware_name = "cdsp_dtb.mbn",
++	.pas_id = 18,
++	.dtb_pas_id = 0x25,
++	.minidump_id = 7,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		"mx",
++		NULL
++	},
++	.load_state = "cdsp",
++	.ssr_name = "cdsp",
++	.sysmon_name = "cdsp",
++	.ssctl_id = 0x17,
++	.smem_host_id = 5,
++};
++
++static const struct qcom_pas_data sm8450_mpss_resource = {
++	.crash_reason_smem = 421,
++	.firmware_name = "modem.mdt",
++	.pas_id = 4,
++	.minidump_id = 3,
++	.auto_boot = false,
++	.decrypt_shutdown = true,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		"mss",
++		NULL
++	},
++	.load_state = "modem",
++	.ssr_name = "mpss",
++	.sysmon_name = "modem",
++	.ssctl_id = 0x12,
++};
++
++static const struct qcom_pas_data sm8550_adsp_resource = {
++	.crash_reason_smem = 423,
++	.firmware_name = "adsp.mdt",
++	.dtb_firmware_name = "adsp_dtb.mdt",
++	.pas_id = 1,
++	.dtb_pas_id = 0x24,
++	.minidump_id = 5,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"lcx",
++		"lmx",
++		NULL
++	},
++	.load_state = "adsp",
++	.ssr_name = "lpass",
++	.sysmon_name = "adsp",
++	.ssctl_id = 0x14,
++	.smem_host_id = 2,
++};
++
++static const struct qcom_pas_data sm8550_cdsp_resource = {
++	.crash_reason_smem = 601,
++	.firmware_name = "cdsp.mdt",
++	.dtb_firmware_name = "cdsp_dtb.mdt",
++	.pas_id = 18,
++	.dtb_pas_id = 0x25,
++	.minidump_id = 7,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		"mxc",
++		"nsp",
++		NULL
++	},
++	.load_state = "cdsp",
++	.ssr_name = "cdsp",
++	.sysmon_name = "cdsp",
++	.ssctl_id = 0x17,
++	.smem_host_id = 5,
++};
++
++static const struct qcom_pas_data sm8550_mpss_resource = {
++	.crash_reason_smem = 421,
++	.firmware_name = "modem.mdt",
++	.dtb_firmware_name = "modem_dtb.mdt",
++	.pas_id = 4,
++	.dtb_pas_id = 0x26,
++	.minidump_id = 3,
++	.auto_boot = false,
++	.decrypt_shutdown = true,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		"mss",
++		NULL
++	},
++	.load_state = "modem",
++	.ssr_name = "mpss",
++	.sysmon_name = "modem",
++	.ssctl_id = 0x12,
++	.smem_host_id = 1,
++	.region_assign_idx = 2,
++	.region_assign_count = 1,
++	.region_assign_vmid = QCOM_SCM_VMID_MSS_MSA,
++};
++
++static const struct qcom_pas_data sc7280_wpss_resource = {
++	.crash_reason_smem = 626,
++	.firmware_name = "wpss.mdt",
++	.pas_id = 6,
++	.minidump_id = 4,
++	.auto_boot = false,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		"mx",
++		NULL
++	},
++	.load_state = "wpss",
++	.ssr_name = "wpss",
++	.sysmon_name = "wpss",
++	.ssctl_id = 0x19,
++};
++
++static const struct qcom_pas_data sm8650_cdsp_resource = {
++	.crash_reason_smem = 601,
++	.firmware_name = "cdsp.mdt",
++	.dtb_firmware_name = "cdsp_dtb.mdt",
++	.pas_id = 18,
++	.dtb_pas_id = 0x25,
++	.minidump_id = 7,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		"mxc",
++		"nsp",
++		NULL
++	},
++	.load_state = "cdsp",
++	.ssr_name = "cdsp",
++	.sysmon_name = "cdsp",
++	.ssctl_id = 0x17,
++	.smem_host_id = 5,
++	.region_assign_idx = 2,
++	.region_assign_count = 1,
++	.region_assign_shared = true,
++	.region_assign_vmid = QCOM_SCM_VMID_CDSP,
++};
++
++static const struct qcom_pas_data sm8650_mpss_resource = {
++	.crash_reason_smem = 421,
++	.firmware_name = "modem.mdt",
++	.dtb_firmware_name = "modem_dtb.mdt",
++	.pas_id = 4,
++	.dtb_pas_id = 0x26,
++	.minidump_id = 3,
++	.auto_boot = false,
++	.decrypt_shutdown = true,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		"mss",
++		NULL
++	},
++	.load_state = "modem",
++	.ssr_name = "mpss",
++	.sysmon_name = "modem",
++	.ssctl_id = 0x12,
++	.smem_host_id = 1,
++	.region_assign_idx = 2,
++	.region_assign_count = 3,
++	.region_assign_vmid = QCOM_SCM_VMID_MSS_MSA,
++};
++
++static const struct qcom_pas_data sm8750_mpss_resource = {
++	.crash_reason_smem = 421,
++	.firmware_name = "modem.mdt",
++	.dtb_firmware_name = "modem_dtb.mdt",
++	.pas_id = 4,
++	.dtb_pas_id = 0x26,
++	.minidump_id = 3,
++	.auto_boot = false,
++	.decrypt_shutdown = true,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		"mss",
++		NULL
++	},
++	.load_state = "modem",
++	.ssr_name = "mpss",
++	.sysmon_name = "modem",
++	.ssctl_id = 0x12,
++	.smem_host_id = 1,
++	.region_assign_idx = 2,
++	.region_assign_count = 2,
++	.region_assign_vmid = QCOM_SCM_VMID_MSS_MSA,
++};
++
++static const struct qcom_pas_data kaanapali_soccp_resource = {
++	.crash_reason_smem = 656,
++	.firmware_name = "soccp.mbn",
++	.dtb_firmware_name = "soccp_dtb.mbn",
++	.pas_id = 51,
++	.dtb_pas_id = 0x41,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		"mx",
++		NULL
++	},
++	.ssr_name = "soccp",
++	.sysmon_name = "soccp",
++	.auto_boot = true,
++	.early_boot = true,
++};
++
++static const struct of_device_id qcom_pas_of_match[] = {
++	{ .compatible = "qcom,eliza-adsp-pas", .data = &sm8550_adsp_resource },
++	{ .compatible = "qcom,kaanapali-soccp-pas", .data = &kaanapali_soccp_resource },
++	{ .compatible = "qcom,milos-adsp-pas", .data = &sm8550_adsp_resource },
++	{ .compatible = "qcom,milos-cdsp-pas", .data = &milos_cdsp_resource },
++	{ .compatible = "qcom,milos-mpss-pas", .data = &sm8450_mpss_resource },
++	{ .compatible = "qcom,milos-wpss-pas", .data = &sc7280_wpss_resource },
++	{ .compatible = "qcom,msm8226-adsp-pil", .data = &msm8996_adsp_resource },
++	{ .compatible = "qcom,msm8953-adsp-pil", .data = &msm8996_adsp_resource },
++	{ .compatible = "qcom,msm8974-adsp-pil", .data = &msm8996_adsp_resource },
++	{ .compatible = "qcom,msm8996-adsp-pil", .data = &msm8996_adsp_resource },
++	{ .compatible = "qcom,msm8996-slpi-pil", .data = &msm8996_slpi_resource_init },
++	{ .compatible = "qcom,msm8998-adsp-pas", .data = &msm8996_adsp_resource },
++	{ .compatible = "qcom,msm8998-slpi-pas", .data = &msm8996_slpi_resource_init },
++	{ .compatible = "qcom,qcs404-adsp-pas", .data = &adsp_resource_init },
++	{ .compatible = "qcom,qcs404-cdsp-pas", .data = &cdsp_resource_init },
++	{ .compatible = "qcom,qcs404-wcss-pas", .data = &wcss_resource_init },
++	{ .compatible = "qcom,sa8775p-adsp-pas", .data = &sa8775p_adsp_resource },
++	{ .compatible = "qcom,sa8775p-cdsp0-pas", .data = &sa8775p_cdsp0_resource },
++	{ .compatible = "qcom,sa8775p-cdsp1-pas", .data = &sa8775p_cdsp1_resource },
++	{ .compatible = "qcom,sa8775p-gpdsp0-pas", .data = &sa8775p_gpdsp0_resource },
++	{ .compatible = "qcom,sa8775p-gpdsp1-pas", .data = &sa8775p_gpdsp1_resource },
++	{ .compatible = "qcom,sar2130p-adsp-pas", .data = &sm8350_adsp_resource },
++	{ .compatible = "qcom,sc7180-adsp-pas", .data = &sm8250_adsp_resource },
++	{ .compatible = "qcom,sc7180-mpss-pas", .data = &mpss_resource_init },
++	{ .compatible = "qcom,sc7280-adsp-pas", .data = &sm8350_adsp_resource },
++	{ .compatible = "qcom,sc7280-cdsp-pas", .data = &sm6350_cdsp_resource },
++	{ .compatible = "qcom,sc7280-mpss-pas", .data = &mpss_resource_init },
++	{ .compatible = "qcom,sc7280-wpss-pas", .data = &sc7280_wpss_resource },
++	{ .compatible = "qcom,sc8180x-adsp-pas", .data = &sm8150_adsp_resource },
++	{ .compatible = "qcom,sc8180x-cdsp-pas", .data = &sm8150_cdsp_resource },
++	{ .compatible = "qcom,sc8180x-mpss-pas", .data = &sc8180x_mpss_resource },
++	{ .compatible = "qcom,sc8280xp-adsp-pas", .data = &sm8250_adsp_resource },
++	{ .compatible = "qcom,sc8280xp-nsp0-pas", .data = &sc8280xp_nsp0_resource },
++	{ .compatible = "qcom,sc8280xp-nsp1-pas", .data = &sc8280xp_nsp1_resource },
++	{ .compatible = "qcom,sdm660-adsp-pas", .data = &adsp_resource_init },
++	{ .compatible = "qcom,sdm660-cdsp-pas", .data = &cdsp_resource_init },
++	{ .compatible = "qcom,sdm845-adsp-pas", .data = &sdm845_adsp_resource_init },
++	{ .compatible = "qcom,sdm845-cdsp-pas", .data = &sdm845_cdsp_resource_init },
++	{ .compatible = "qcom,sdm845-slpi-pas", .data = &sdm845_slpi_resource_init },
++	{ .compatible = "qcom,sdx55-mpss-pas", .data = &sdx55_mpss_resource },
++	{ .compatible = "qcom,sdx75-mpss-pas", .data = &sm8650_mpss_resource },
++	{ .compatible = "qcom,sm6115-adsp-pas", .data = &adsp_resource_init },
++	{ .compatible = "qcom,sm6115-cdsp-pas", .data = &cdsp_resource_init },
++	{ .compatible = "qcom,sm6115-mpss-pas", .data = &sc8180x_mpss_resource },
++	{ .compatible = "qcom,sm6350-adsp-pas", .data = &sm6350_adsp_resource },
++	{ .compatible = "qcom,sm6350-cdsp-pas", .data = &sm6350_cdsp_resource },
++	{ .compatible = "qcom,sm6350-mpss-pas", .data = &mpss_resource_init },
++	{ .compatible = "qcom,sm6375-adsp-pas", .data = &sm6350_adsp_resource },
++	{ .compatible = "qcom,sm6375-cdsp-pas", .data = &sm8150_cdsp_resource },
++	{ .compatible = "qcom,sm6375-mpss-pas", .data = &sm6375_mpss_resource },
++	{ .compatible = "qcom,sm8150-adsp-pas", .data = &sm8150_adsp_resource },
++	{ .compatible = "qcom,sm8150-cdsp-pas", .data = &sm8150_cdsp_resource },
++	{ .compatible = "qcom,sm8150-mpss-pas", .data = &mpss_resource_init },
++	{ .compatible = "qcom,sm8150-slpi-pas", .data = &sdm845_slpi_resource_init },
++	{ .compatible = "qcom,sm8250-adsp-pas", .data = &sm8250_adsp_resource },
++	{ .compatible = "qcom,sm8250-cdsp-pas", .data = &sm8250_cdsp_resource },
++	{ .compatible = "qcom,sm8250-slpi-pas", .data = &sdm845_slpi_resource_init },
++	{ .compatible = "qcom,sm8350-adsp-pas", .data = &sm8350_adsp_resource },
++	{ .compatible = "qcom,sm8350-cdsp-pas", .data = &sm8350_cdsp_resource },
++	{ .compatible = "qcom,sm8350-slpi-pas", .data = &sdm845_slpi_resource_init },
++	{ .compatible = "qcom,sm8350-mpss-pas", .data = &mpss_resource_init },
++	{ .compatible = "qcom,sm8450-adsp-pas", .data = &sm8350_adsp_resource },
++	{ .compatible = "qcom,sm8450-cdsp-pas", .data = &sm8350_cdsp_resource },
++	{ .compatible = "qcom,sm8450-slpi-pas", .data = &sdm845_slpi_resource_init },
++	{ .compatible = "qcom,sm8450-mpss-pas", .data = &sm8450_mpss_resource },
++	{ .compatible = "qcom,sm8550-adsp-pas", .data = &sm8550_adsp_resource },
++	{ .compatible = "qcom,sm8550-cdsp-pas", .data = &sm8550_cdsp_resource },
++	{ .compatible = "qcom,sm8550-mpss-pas", .data = &sm8550_mpss_resource },
++	{ .compatible = "qcom,sm8650-adsp-pas", .data = &sm8550_adsp_resource },
++	{ .compatible = "qcom,sm8650-cdsp-pas", .data = &sm8650_cdsp_resource },
++	{ .compatible = "qcom,sm8650-mpss-pas", .data = &sm8650_mpss_resource },
++	{ .compatible = "qcom,sm8750-mpss-pas", .data = &sm8750_mpss_resource },
++	{ .compatible = "qcom,x1e80100-adsp-pas", .data = &x1e80100_adsp_resource },
++	{ .compatible = "qcom,x1e80100-cdsp-pas", .data = &x1e80100_cdsp_resource },
++	{ },
++};
++MODULE_DEVICE_TABLE(of, qcom_pas_of_match);
++
++static struct platform_driver qcom_pas_driver = {
++	.probe = qcom_pas_probe,
++	.remove = qcom_pas_remove,
++	.driver = {
++		.name = "qcom_q6v5_pas",
++		.of_match_table = qcom_pas_of_match,
++	},
++};
++
++module_platform_driver(qcom_pas_driver);
++MODULE_DESCRIPTION("Qualcomm Peripheral Authentication Service remoteproc driver");
++MODULE_LICENSE("GPL v2");
+diff --git a/rr-cache/530582e986a727413b52389dd339d37c297ced98/thisimage.1 b/rr-cache/530582e986a727413b52389dd339d37c297ced98/thisimage.1
+new file mode 100644
+index 0000000..8a7bb08
+--- /dev/null
++++ b/rr-cache/530582e986a727413b52389dd339d37c297ced98/thisimage.1
+@@ -0,0 +1,889 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Qualcomm ICE (Inline Crypto Engine) support.
++ *
++ * Copyright (c) 2013-2019, The Linux Foundation. All rights reserved.
++ * Copyright (c) 2019, Google LLC
++ * Copyright (c) 2023, Linaro Limited
++ */
++
++#include <linux/bitfield.h>
++#include <linux/cleanup.h>
++#include <linux/clk.h>
++#include <linux/delay.h>
++#include <linux/device.h>
++#include <linux/iopoll.h>
++#include <linux/of.h>
++#include <linux/of_platform.h>
++#include <linux/platform_device.h>
++<<<<<<<
++#include <linux/pm_opp.h>
++=======
++#include <linux/xarray.h>
++>>>>>>>
++
++#include <linux/firmware/qcom/qcom_scm.h>
++
++#include <soc/qcom/ice.h>
++
++#define AES_256_XTS_KEY_SIZE			64   /* for raw keys only */
++
++#define QCOM_ICE_HWKM_V1			1    /* HWKM version 1 */
++#define QCOM_ICE_HWKM_V2			2    /* HWKM version 2 */
++
++#define QCOM_ICE_HWKM_MAX_WRAPPED_KEY_SIZE	100  /* Maximum HWKM wrapped key size */
++
++/*
++ * Wrapped key size depends upon HWKM version:
++ * HWKM version 1 supports 68 bytes
++ * HWKM version 2 supports 100 bytes
++ */
++#define QCOM_ICE_HWKM_WRAPPED_KEY_SIZE(v)	((v) == QCOM_ICE_HWKM_V1 ? 68 : 100)
++
++/* QCOM ICE registers */
++
++#define QCOM_ICE_REG_CONTROL			0x0000
++#define QCOM_ICE_LEGACY_MODE_ENABLED		BIT(0)
++
++#define QCOM_ICE_REG_VERSION			0x0008
++
++#define QCOM_ICE_REG_FUSE_SETTING		0x0010
++#define QCOM_ICE_FUSE_SETTING_MASK		BIT(0)
++#define QCOM_ICE_FORCE_HW_KEY0_SETTING_MASK	BIT(1)
++#define QCOM_ICE_FORCE_HW_KEY1_SETTING_MASK	BIT(2)
++
++#define QCOM_ICE_REG_BIST_STATUS		0x0070
++#define QCOM_ICE_BIST_STATUS_MASK		GENMASK(31, 28)
++
++#define QCOM_ICE_REG_ADVANCED_CONTROL		0x1000
++
++#define QCOM_ICE_REG_CRYPTOCFG_BASE		0x4040
++#define QCOM_ICE_REG_CRYPTOCFG_SIZE		0x80
++#define QCOM_ICE_REG_CRYPTOCFG(slot) (QCOM_ICE_REG_CRYPTOCFG_BASE + \
++				      QCOM_ICE_REG_CRYPTOCFG_SIZE * (slot))
++union crypto_cfg {
++	__le32 regval;
++	struct {
++		u8 dusize;
++		u8 capidx;
++		u8 reserved;
++#define QCOM_ICE_HWKM_CFG_ENABLE_VAL		BIT(7)
++		u8 cfge;
++	};
++};
++
++/* QCOM ICE HWKM (Hardware Key Manager) registers */
++
++#define HWKM_OFFSET				0x8000
++
++#define QCOM_ICE_REG_HWKM_TZ_KM_CTL		(HWKM_OFFSET + 0x1000)
++#define QCOM_ICE_HWKM_DISABLE_CRC_CHECKS_VAL	(BIT(1) | BIT(2))
++/* In HWKM v1 the ICE legacy mode is controlled from HWKM register space */
++#define QCOM_ICE_HWKM_ICE_LEGACY_MODE_ENABLED	BIT(5)
++
++#define QCOM_ICE_REG_HWKM_TZ_KM_STATUS		(HWKM_OFFSET + 0x1004)
++#define QCOM_ICE_HWKM_KT_CLEAR_DONE		BIT(0)
++#define QCOM_ICE_HWKM_BOOT_CMD_LIST0_DONE	BIT(1)
++#define QCOM_ICE_HWKM_BOOT_CMD_LIST1_DONE	BIT(2)
++#define QCOM_ICE_HWKM_CRYPTO_BIST_DONE(v)	(((v) == QCOM_ICE_HWKM_V1) ? BIT(14) : BIT(7))
++#define QCOM_ICE_HWKM_BIST_DONE(v)		(((v) == QCOM_ICE_HWKM_V1) ? BIT(16) : BIT(9))
++
++#define QCOM_ICE_REG_HWKM_BANK0_BANKN_IRQ_STATUS (HWKM_OFFSET + 0x2008)
++#define QCOM_ICE_HWKM_RSP_FIFO_CLEAR_VAL	BIT(3)
++
++#define QCOM_ICE_REG_HWKM_BANK0_BBAC_0		(HWKM_OFFSET + 0x5000)
++#define QCOM_ICE_REG_HWKM_BANK0_BBAC_1		(HWKM_OFFSET + 0x5004)
++#define QCOM_ICE_REG_HWKM_BANK0_BBAC_2		(HWKM_OFFSET + 0x5008)
++#define QCOM_ICE_REG_HWKM_BANK0_BBAC_3		(HWKM_OFFSET + 0x500C)
++#define QCOM_ICE_REG_HWKM_BANK0_BBAC_4		(HWKM_OFFSET + 0x5010)
++
++#define qcom_ice_writel(engine, val, reg)	\
++	writel((val), (engine)->base + (reg))
++
++#define qcom_ice_readl(engine, reg)	\
++	readl((engine)->base + (reg))
++
++static bool qcom_ice_use_wrapped_keys;
++module_param_named(use_wrapped_keys, qcom_ice_use_wrapped_keys, bool, 0660);
++MODULE_PARM_DESC(use_wrapped_keys,
++		 "Support wrapped keys instead of raw keys, if available on the platform");
++
++struct qcom_ice {
++	struct device *dev;
++	void __iomem *base;
++
++	struct clk *core_clk;
++	struct clk *iface_clk;
++	bool use_hwkm;
++	bool hwkm_init_complete;
++	u8 hwkm_version;
++	unsigned long core_clk_freq;
++	bool has_opp;
++};
++
++static DEFINE_XARRAY(ice_handles);
++static DEFINE_MUTEX(ice_mutex);
++
++static bool qcom_ice_check_supported(struct qcom_ice *ice)
++{
++	u32 regval = qcom_ice_readl(ice, QCOM_ICE_REG_VERSION);
++	struct device *dev = ice->dev;
++	int major = FIELD_GET(GENMASK(31, 24), regval);
++	int minor = FIELD_GET(GENMASK(23, 16), regval);
++	int step = FIELD_GET(GENMASK(15, 0), regval);
++
++	/* For now this driver only supports ICE version 3 and 4. */
++	if (major != 3 && major != 4) {
++		dev_warn(dev, "Unsupported ICE version: v%d.%d.%d\n",
++			 major, minor, step);
++		return false;
++	}
++
++	/* HWKM version v2 is present from ICE 3.2.1 onwards while version v1
++	 * is present only in ICE 3.2.0. Earlier ICE version don't have HWKM.
++	 */
++	if (major > 3 ||
++	   (major == 3 && (minor >= 3 || (minor == 2 && step >= 1))))
++		ice->hwkm_version = QCOM_ICE_HWKM_V2;
++	else if ((major == 3) && (minor == 2))
++		ice->hwkm_version = QCOM_ICE_HWKM_V1;
++	else
++		ice->hwkm_version = 0;
++
++	dev_info(dev, "Found QC Inline Crypto Engine (ICE) v%d.%d.%d\n",
++		 major, minor, step);
++
++	if (ice->hwkm_version)
++		dev_info(dev, "QC Hardware Key Manager (HWKM) version v%d\n",
++			 ice->hwkm_version);
++
++	/* If fuses are blown, ICE might not work in the standard way. */
++	regval = qcom_ice_readl(ice, QCOM_ICE_REG_FUSE_SETTING);
++	if (regval & (QCOM_ICE_FUSE_SETTING_MASK |
++		      QCOM_ICE_FORCE_HW_KEY0_SETTING_MASK |
++		      QCOM_ICE_FORCE_HW_KEY1_SETTING_MASK)) {
++		dev_warn(dev, "Fuses are blown; ICE is unusable!\n");
++		return false;
++	}
++
++	/*
++	 * Check for HWKM support and decide whether to use it or not.  ICE
++	 * v3.2.1 and later have HWKM v2.  ICE v3.2.0 has HWKM v1.  Earlier ICE
++	 * versions don't have HWKM at all.  However, for HWKM to be fully
++	 * usable by Linux, the TrustZone software also needs to support certain
++	 * SCM calls including the ones to generate and prepare keys. Support
++	 * for these SCM calls is present for SoCs with HWKM v2 and is being
++	 * added for SoCs with HWKM v1 as well but not every SoC with HWKM v1
++	 * currently supports this. So, this driver checks for the SCM call
++	 * support before it decides to use HWKM.
++	 *
++	 * Also, since HWKM and legacy mode are mutually exclusive, and
++	 * ICE-capable storage driver(s) need to know early on whether to
++	 * advertise support for raw keys or wrapped keys, HWKM cannot be used
++	 * unconditionally.  A module parameter is used to opt into using it.
++	 */
++	if (ice->hwkm_version && qcom_scm_has_wrapped_key_support()) {
++		if (qcom_ice_use_wrapped_keys) {
++			dev_info(dev, "Using HWKM. Supporting wrapped keys only.\n");
++			ice->use_hwkm = true;
++		} else {
++			dev_info(dev, "Not using HWKM. Supporting raw keys only.\n");
++		}
++	} else if (qcom_ice_use_wrapped_keys) {
++		dev_warn(dev, "A supported HWKM is not present. Ignoring qcom_ice.use_wrapped_keys=1.\n");
++	} else {
++		dev_info(dev, "A supported HWKM is not present. Supporting raw keys only.\n");
++	}
++	return true;
++}
++
++static void qcom_ice_low_power_mode_enable(struct qcom_ice *ice)
++{
++	u32 regval;
++
++	regval = qcom_ice_readl(ice, QCOM_ICE_REG_ADVANCED_CONTROL);
++
++	/* Enable low power mode sequence */
++	regval |= 0x7000;
++	qcom_ice_writel(ice, regval, QCOM_ICE_REG_ADVANCED_CONTROL);
++}
++
++static void qcom_ice_optimization_enable(struct qcom_ice *ice)
++{
++	u32 regval;
++
++	/* ICE Optimizations Enable Sequence */
++	regval = qcom_ice_readl(ice, QCOM_ICE_REG_ADVANCED_CONTROL);
++	regval |= 0xd807100;
++	/* ICE HPG requires delay before writing */
++	udelay(5);
++	qcom_ice_writel(ice, regval, QCOM_ICE_REG_ADVANCED_CONTROL);
++	udelay(5);
++}
++
++/*
++ * Wait until the ICE BIST (built-in self-test) has completed.
++ *
++ * This may be necessary before ICE can be used.
++ * Note that we don't really care whether the BIST passed or failed;
++ * we really just want to make sure that it isn't still running. This is
++ * because (a) the BIST is a FIPS compliance thing that never fails in
++ * practice, (b) ICE is documented to reject crypto requests if the BIST
++ * fails, so we needn't do it in software too, and (c) properly testing
++ * storage encryption requires testing the full storage stack anyway,
++ * and not relying on hardware-level self-tests.
++ */
++static int qcom_ice_wait_bist_status(struct qcom_ice *ice)
++{
++	u32 regval;
++	int err;
++
++	err = readl_poll_timeout(ice->base + QCOM_ICE_REG_BIST_STATUS,
++				 regval, !(regval & QCOM_ICE_BIST_STATUS_MASK),
++				 50, 5000);
++	if (err) {
++		dev_err(ice->dev, "Timed out waiting for ICE self-test to complete\n");
++		return err;
++	}
++
++	if (ice->use_hwkm &&
++	    qcom_ice_readl(ice, QCOM_ICE_REG_HWKM_TZ_KM_STATUS) !=
++	    (QCOM_ICE_HWKM_KT_CLEAR_DONE |
++	     QCOM_ICE_HWKM_BOOT_CMD_LIST0_DONE |
++	     QCOM_ICE_HWKM_BOOT_CMD_LIST1_DONE |
++	     QCOM_ICE_HWKM_CRYPTO_BIST_DONE(ice->hwkm_version) |
++	     QCOM_ICE_HWKM_BIST_DONE(ice->hwkm_version))) {
++		dev_err(ice->dev, "HWKM self-test error!\n");
++		/*
++		 * Too late to revoke use_hwkm here, as it was already
++		 * propagated up the stack into the crypto capabilities.
++		 */
++	}
++	return 0;
++}
++
++static void qcom_ice_hwkm_init(struct qcom_ice *ice)
++{
++	u32 regval;
++
++	if (!ice->use_hwkm)
++		return;
++
++	BUILD_BUG_ON(QCOM_ICE_HWKM_MAX_WRAPPED_KEY_SIZE >
++		     BLK_CRYPTO_MAX_HW_WRAPPED_KEY_SIZE);
++	/*
++	 * When ICE is in HWKM mode, it only supports wrapped keys.
++	 * When ICE is in legacy mode, it only supports raw keys.
++	 *
++	 * Put ICE in HWKM mode.  ICE defaults to legacy mode.
++	 */
++	if (ice->hwkm_version == QCOM_ICE_HWKM_V2) {
++		regval = qcom_ice_readl(ice, QCOM_ICE_REG_CONTROL);
++		regval &= ~QCOM_ICE_LEGACY_MODE_ENABLED;
++		qcom_ice_writel(ice, regval, QCOM_ICE_REG_CONTROL);
++	} else if (ice->hwkm_version == QCOM_ICE_HWKM_V1) {
++		regval = qcom_ice_readl(ice, QCOM_ICE_REG_HWKM_TZ_KM_CTL);
++		regval &= ~QCOM_ICE_HWKM_ICE_LEGACY_MODE_ENABLED;
++		qcom_ice_writel(ice, regval, QCOM_ICE_REG_HWKM_TZ_KM_CTL);
++	}
++
++	/* Disable CRC checks.  This HWKM feature is not used. */
++	qcom_ice_writel(ice, QCOM_ICE_HWKM_DISABLE_CRC_CHECKS_VAL,
++			QCOM_ICE_REG_HWKM_TZ_KM_CTL);
++
++	/*
++	 * Allow the HWKM slave to read and write the keyslots in the ICE HWKM
++	 * slave.  Without this, TrustZone cannot program keys into ICE.
++	 */
++	qcom_ice_writel(ice, GENMASK(31, 0), QCOM_ICE_REG_HWKM_BANK0_BBAC_0);
++	qcom_ice_writel(ice, GENMASK(31, 0), QCOM_ICE_REG_HWKM_BANK0_BBAC_1);
++	qcom_ice_writel(ice, GENMASK(31, 0), QCOM_ICE_REG_HWKM_BANK0_BBAC_2);
++	qcom_ice_writel(ice, GENMASK(31, 0), QCOM_ICE_REG_HWKM_BANK0_BBAC_3);
++	qcom_ice_writel(ice, GENMASK(31, 0), QCOM_ICE_REG_HWKM_BANK0_BBAC_4);
++
++	/* Clear the HWKM response FIFO. */
++	qcom_ice_writel(ice, QCOM_ICE_HWKM_RSP_FIFO_CLEAR_VAL,
++			QCOM_ICE_REG_HWKM_BANK0_BANKN_IRQ_STATUS);
++	ice->hwkm_init_complete = true;
++}
++
++int qcom_ice_enable(struct qcom_ice *ice)
++{
++	qcom_ice_low_power_mode_enable(ice);
++	qcom_ice_optimization_enable(ice);
++	qcom_ice_hwkm_init(ice);
++	return qcom_ice_wait_bist_status(ice);
++}
++EXPORT_SYMBOL_GPL(qcom_ice_enable);
++
++int qcom_ice_resume(struct qcom_ice *ice)
++{
++	struct device *dev = ice->dev;
++	int err;
++
++	/* Restore the ICE core clk freq */
++	if (ice->has_opp && ice->core_clk_freq)
++		dev_pm_opp_set_rate(ice->dev, ice->core_clk_freq);
++
++	err = clk_prepare_enable(ice->core_clk);
++	if (err) {
++		dev_err(dev, "Failed to enable core clock: %d\n", err);
++		return err;
++	}
++
++	err = clk_prepare_enable(ice->iface_clk);
++	if (err) {
++		dev_err(dev, "Failed to enable iface clock: %d\n", err);
++		return err;
++	}
++	qcom_ice_hwkm_init(ice);
++	return qcom_ice_wait_bist_status(ice);
++}
++EXPORT_SYMBOL_GPL(qcom_ice_resume);
++
++int qcom_ice_suspend(struct qcom_ice *ice)
++{
++	clk_disable_unprepare(ice->iface_clk);
++	clk_disable_unprepare(ice->core_clk);
++
++	/* Drop the clock votes while suspend */
++	if (ice->has_opp)
++		dev_pm_opp_set_rate(ice->dev, 0);
++
++	ice->hwkm_init_complete = false;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(qcom_ice_suspend);
++
++static unsigned int translate_hwkm_slot(struct qcom_ice *ice, unsigned int slot)
++{
++	return ice->hwkm_version == QCOM_ICE_HWKM_V1 ? slot : slot * 2;
++}
++
++static int qcom_ice_program_wrapped_key(struct qcom_ice *ice, unsigned int slot,
++					const struct blk_crypto_key *bkey)
++{
++	struct device *dev = ice->dev;
++	union crypto_cfg cfg = {
++		.dusize = bkey->crypto_cfg.data_unit_size / 512,
++		.capidx = QCOM_SCM_ICE_CIPHER_AES_256_XTS,
++		.cfge = QCOM_ICE_HWKM_CFG_ENABLE_VAL,
++	};
++	int err;
++
++	if (!ice->use_hwkm) {
++		dev_err_ratelimited(dev, "Got wrapped key when not using HWKM\n");
++		return -EINVAL;
++	}
++	if (!ice->hwkm_init_complete) {
++		dev_err_ratelimited(dev, "HWKM not yet initialized\n");
++		return -EINVAL;
++	}
++
++	/* Clear CFGE before programming the key. */
++	qcom_ice_writel(ice, 0x0, QCOM_ICE_REG_CRYPTOCFG(slot));
++
++	/* Call into TrustZone to program the wrapped key using HWKM. */
++	err = qcom_scm_ice_set_key(translate_hwkm_slot(ice, slot), bkey->bytes,
++				   bkey->size, cfg.capidx, cfg.dusize);
++	if (err) {
++		dev_err_ratelimited(dev,
++				    "qcom_scm_ice_set_key failed; err=%d, slot=%u\n",
++				    err, slot);
++		return err;
++	}
++
++	/* Set CFGE after programming the key. */
++	qcom_ice_writel(ice, le32_to_cpu(cfg.regval),
++			QCOM_ICE_REG_CRYPTOCFG(slot));
++	return 0;
++}
++
++int qcom_ice_program_key(struct qcom_ice *ice, unsigned int slot,
++			 const struct blk_crypto_key *blk_key)
++{
++	struct device *dev = ice->dev;
++	union {
++		u8 bytes[AES_256_XTS_KEY_SIZE];
++		u32 words[AES_256_XTS_KEY_SIZE / sizeof(u32)];
++	} key;
++	int i;
++	int err;
++
++	/* Only AES-256-XTS has been tested so far. */
++	if (blk_key->crypto_cfg.crypto_mode !=
++	    BLK_ENCRYPTION_MODE_AES_256_XTS) {
++		dev_err_ratelimited(dev, "Unsupported crypto mode: %d\n",
++				    blk_key->crypto_cfg.crypto_mode);
++		return -EINVAL;
++	}
++
++	if (blk_key->crypto_cfg.key_type == BLK_CRYPTO_KEY_TYPE_HW_WRAPPED)
++		return qcom_ice_program_wrapped_key(ice, slot, blk_key);
++
++	if (ice->use_hwkm) {
++		dev_err_ratelimited(dev, "Got raw key when using HWKM\n");
++		return -EINVAL;
++	}
++
++	if (blk_key->size != AES_256_XTS_KEY_SIZE) {
++		dev_err_ratelimited(dev, "Incorrect key size\n");
++		return -EINVAL;
++	}
++	memcpy(key.bytes, blk_key->bytes, AES_256_XTS_KEY_SIZE);
++
++	/* The SCM call requires that the key words are encoded in big endian */
++	for (i = 0; i < ARRAY_SIZE(key.words); i++)
++		__cpu_to_be32s(&key.words[i]);
++
++	err = qcom_scm_ice_set_key(slot, key.bytes, AES_256_XTS_KEY_SIZE,
++				   QCOM_SCM_ICE_CIPHER_AES_256_XTS,
++				   blk_key->crypto_cfg.data_unit_size / 512);
++
++	memzero_explicit(&key, sizeof(key));
++
++	return err;
++}
++EXPORT_SYMBOL_GPL(qcom_ice_program_key);
++
++int qcom_ice_evict_key(struct qcom_ice *ice, int slot)
++{
++	if (ice->hwkm_init_complete)
++		slot = translate_hwkm_slot(ice, slot);
++	return qcom_scm_ice_invalidate_key(slot);
++}
++EXPORT_SYMBOL_GPL(qcom_ice_evict_key);
++
++/**
++ * qcom_ice_get_supported_key_type() - Get the supported key type
++ * @ice: ICE driver data
++ *
++ * Return: the blk-crypto key type that the ICE driver is configured to use.
++ * This is the key type that ICE-capable storage drivers should advertise as
++ * supported in the crypto capabilities of any disks they register.
++ */
++enum blk_crypto_key_type qcom_ice_get_supported_key_type(struct qcom_ice *ice)
++{
++	if (ice->use_hwkm)
++		return BLK_CRYPTO_KEY_TYPE_HW_WRAPPED;
++	return BLK_CRYPTO_KEY_TYPE_RAW;
++}
++EXPORT_SYMBOL_GPL(qcom_ice_get_supported_key_type);
++
++/**
++ * qcom_ice_derive_sw_secret() - Derive software secret from wrapped key
++ * @ice: ICE driver data
++ * @eph_key: an ephemerally-wrapped key
++ * @eph_key_size: size of @eph_key in bytes
++ * @sw_secret: output buffer for the software secret
++ *
++ * Use HWKM to derive the "software secret" from a hardware-wrapped key that is
++ * given in ephemerally-wrapped form.
++ *
++ * Return: 0 on success; -EBADMSG if the given ephemerally-wrapped key is
++ *	   invalid; or another -errno value.
++ */
++int qcom_ice_derive_sw_secret(struct qcom_ice *ice,
++			      const u8 *eph_key, size_t eph_key_size,
++			      u8 sw_secret[BLK_CRYPTO_SW_SECRET_SIZE])
++{
++	int err = qcom_scm_derive_sw_secret(eph_key, eph_key_size,
++					    sw_secret,
++					    BLK_CRYPTO_SW_SECRET_SIZE);
++	if (err == -EIO || err == -EINVAL)
++		err = -EBADMSG; /* probably invalid key */
++	return err;
++}
++EXPORT_SYMBOL_GPL(qcom_ice_derive_sw_secret);
++
++/**
++ * qcom_ice_generate_key() - Generate a wrapped key for inline encryption
++ * @ice: ICE driver data
++ * @lt_key: output buffer for the long-term wrapped key
++ *
++ * Use HWKM to generate a new key and return it as a long-term wrapped key.
++ *
++ * Return: the size of the resulting wrapped key on success; -errno on failure.
++ */
++int qcom_ice_generate_key(struct qcom_ice *ice,
++			  u8 lt_key[BLK_CRYPTO_MAX_HW_WRAPPED_KEY_SIZE])
++{
++	int err;
++
++	err = qcom_scm_generate_ice_key(lt_key,
++					QCOM_ICE_HWKM_WRAPPED_KEY_SIZE(ice->hwkm_version));
++	if (err)
++		return err;
++
++	return QCOM_ICE_HWKM_WRAPPED_KEY_SIZE(ice->hwkm_version);
++}
++EXPORT_SYMBOL_GPL(qcom_ice_generate_key);
++
++/**
++ * qcom_ice_prepare_key() - Prepare a wrapped key for inline encryption
++ * @ice: ICE driver data
++ * @lt_key: a long-term wrapped key
++ * @lt_key_size: size of @lt_key in bytes
++ * @eph_key: output buffer for the ephemerally-wrapped key
++ *
++ * Use HWKM to re-wrap a long-term wrapped key with the per-boot ephemeral key.
++ *
++ * Return: the size of the resulting wrapped key on success; -EBADMSG if the
++ *	   given long-term wrapped key is invalid; or another -errno value.
++ */
++int qcom_ice_prepare_key(struct qcom_ice *ice,
++			 const u8 *lt_key, size_t lt_key_size,
++			 u8 eph_key[BLK_CRYPTO_MAX_HW_WRAPPED_KEY_SIZE])
++{
++	int err;
++
++	err = qcom_scm_prepare_ice_key(lt_key, lt_key_size,
++				       eph_key, QCOM_ICE_HWKM_WRAPPED_KEY_SIZE(ice->hwkm_version));
++	if (err == -EIO || err == -EINVAL)
++		err = -EBADMSG; /* probably invalid key */
++	if (err)
++		return err;
++
++	return QCOM_ICE_HWKM_WRAPPED_KEY_SIZE(ice->hwkm_version);
++}
++EXPORT_SYMBOL_GPL(qcom_ice_prepare_key);
++
++/**
++ * qcom_ice_import_key() - Import a raw key for inline encryption
++ * @ice: ICE driver data
++ * @raw_key: the raw key to import
++ * @raw_key_size: size of @raw_key in bytes
++ * @lt_key: output buffer for the long-term wrapped key
++ *
++ * Use HWKM to import a raw key and return it as a long-term wrapped key.
++ *
++ * Return: the size of the resulting wrapped key on success; -errno on failure.
++ */
++int qcom_ice_import_key(struct qcom_ice *ice,
++			const u8 *raw_key, size_t raw_key_size,
++			u8 lt_key[BLK_CRYPTO_MAX_HW_WRAPPED_KEY_SIZE])
++{
++	int err;
++
++	err = qcom_scm_import_ice_key(raw_key, raw_key_size,
++				      lt_key, QCOM_ICE_HWKM_WRAPPED_KEY_SIZE(ice->hwkm_version));
++	if (err)
++		return err;
++
++	return QCOM_ICE_HWKM_WRAPPED_KEY_SIZE(ice->hwkm_version);
++}
++EXPORT_SYMBOL_GPL(qcom_ice_import_key);
++
++/**
++ * qcom_ice_scale_clk() - Scale ICE clock for DVFS-aware operations
++ * @ice: ICE driver data
++ * @target_freq: requested frequency in Hz
++ * @round_ceil: when true, selects nearest freq >= @target_freq;
++ *              otherwise, selects nearest freq <= @target_freq
++ *
++ * Selects an OPP frequency based on @target_freq and the rounding direction
++ * specified by @round_ceil, then programs it using dev_pm_opp_set_rate(),
++ * including any voltage or power-domain transitions handled by the OPP
++ * framework. Updates ice->core_clk_freq on success.
++ *
++ * Return: 0 on success; -EOPNOTSUPP if no OPP table; or error from
++ *         dev_pm_opp_set_rate()/OPP lookup.
++ */
++int qcom_ice_scale_clk(struct qcom_ice *ice, unsigned long target_freq,
++		       bool round_ceil)
++{
++	unsigned long ice_freq = target_freq;
++	struct dev_pm_opp *opp;
++	int ret;
++
++	if (!ice->has_opp)
++		return -EOPNOTSUPP;
++
++	if (round_ceil)
++		opp = dev_pm_opp_find_freq_ceil(ice->dev, &ice_freq);
++	else
++		opp = dev_pm_opp_find_freq_floor(ice->dev, &ice_freq);
++
++	if (IS_ERR(opp))
++		return PTR_ERR(opp);
++	dev_pm_opp_put(opp);
++
++	ret = dev_pm_opp_set_rate(ice->dev, ice_freq);
++	if (ret) {
++		dev_err(ice->dev, "Unable to scale ICE clock rate\n");
++		return ret;
++	}
++	ice->core_clk_freq = ice_freq;
++
++	return ret;
++}
++EXPORT_SYMBOL_GPL(qcom_ice_scale_clk);
++
++static struct qcom_ice *qcom_ice_create(struct device *dev,
++					void __iomem *base)
++{
++	struct qcom_ice *engine;
++
++	if (!qcom_scm_is_available())
++		return ERR_PTR(-EPROBE_DEFER);
++
++	if (!qcom_scm_ice_available()) {
++		dev_warn(dev, "ICE SCM interface not found\n");
++		return ERR_PTR(-EOPNOTSUPP);
++	}
++
++	engine = devm_kzalloc(dev, sizeof(*engine), GFP_KERNEL);
++	if (!engine)
++		return ERR_PTR(-ENOMEM);
++
++	engine->dev = dev;
++	engine->base = base;
++
++	/*
++	 * Legacy DT binding uses different clk names for each consumer,
++	 * so lets try those first. If none of those are a match, it means
++	 * the we only have one clock and it is part of the dedicated DT node.
++	 * Also, enable the clock before we check what HW version the driver
++	 * supports.
++	 */
++	engine->core_clk = devm_clk_get_optional_enabled(dev, "ice_core_clk");
++	if (!engine->core_clk)
++		engine->core_clk = devm_clk_get_optional_enabled(dev, "ice");
++	if (!engine->core_clk)
++		engine->core_clk = devm_clk_get_optional_enabled(dev, "core");
++	if (!engine->core_clk)
++		engine->core_clk = devm_clk_get_enabled(dev, NULL);
++	if (IS_ERR(engine->core_clk))
++		return ERR_CAST(engine->core_clk);
++
++	engine->iface_clk = devm_clk_get_optional_enabled(dev, "iface");
++	if (IS_ERR(engine->iface_clk))
++		return ERR_CAST(engine->iface_clk);
++
++	if (!qcom_ice_check_supported(engine))
++		return ERR_PTR(-EOPNOTSUPP);
++
++	dev_dbg(dev, "Registered Qualcomm Inline Crypto Engine\n");
++
++	return engine;
++}
++
++/**
++ * of_qcom_ice_get() - get an ICE instance from a DT node
++ * @dev: device pointer for the consumer device
++ *
++ * This function will provide an ICE instance either by creating one for the
++ * consumer device if its DT node provides the 'ice' reg range and the 'ice'
++ * clock (for legacy DT style). On the other hand, if consumer provides a
++ * phandle via 'qcom,ice' property to an ICE DT, the ICE instance will already
++ * be created and so this function will return that instead.
++ *
++ * Return: ICE pointer on success, NULL if there is no ICE data provided by the
++ * consumer or ERR_PTR() on error.
++ */
++static struct qcom_ice *of_qcom_ice_get(struct device *dev)
++{
++	struct platform_device *pdev = to_platform_device(dev);
++	struct qcom_ice *ice;
++	struct resource *res;
++	void __iomem *base;
++	struct device_link *link;
++
++	if (!dev || !dev->of_node)
++		return ERR_PTR(-ENODEV);
++
++	/*
++	 * In order to support legacy style devicetree bindings, we need
++	 * to create the ICE instance using the consumer device and the reg
++	 * range called 'ice' it provides.
++	 */
++	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ice");
++	if (res) {
++		base = devm_ioremap_resource(&pdev->dev, res);
++		if (IS_ERR(base))
++			return ERR_CAST(base);
++
++		/* create ICE instance using consumer dev */
++		return qcom_ice_create(&pdev->dev, base);
++	}
++
++	guard(mutex)(&ice_mutex);
++
++	/*
++	 * If the consumer node does not provider an 'ice' reg range
++	 * (legacy DT binding), then it must at least provide a phandle
++	 * to the ICE devicetree node, otherwise ICE is not supported.
++	 */
++	struct device_node *node __free(device_node) = of_parse_phandle(dev->of_node,
++									"qcom,ice", 0);
++	if (!node)
++		return ERR_PTR(-ENODEV);
++
++	pdev = of_find_device_by_node(node);
++	if (!pdev) {
++		dev_err(dev, "Cannot find device node %s\n", node->name);
++		return ERR_PTR(-ENODEV);
++	}
++
++	ice = xa_load(&ice_handles, pdev->dev.of_node->phandle);
++	if (IS_ERR_OR_NULL(ice)) {
++		platform_device_put(pdev);
++		if (!ice)
++			return ERR_PTR(-EPROBE_DEFER);
++		else
++			return ice;
++	}
++
++	link = device_link_add(dev, &pdev->dev, DL_FLAG_AUTOREMOVE_SUPPLIER);
++	if (!link) {
++		dev_err(&pdev->dev,
++			"Failed to create device link to consumer %s\n",
++			dev_name(dev));
++		platform_device_put(pdev);
++		ice = ERR_PTR(-EINVAL);
++	}
++
++	return ice;
++}
++
++static void qcom_ice_put(const struct qcom_ice *ice)
++{
++	struct platform_device *pdev = to_platform_device(ice->dev);
++
++	if (!platform_get_resource_byname(pdev, IORESOURCE_MEM, "ice"))
++		platform_device_put(pdev);
++}
++
++static void devm_of_qcom_ice_put(struct device *dev, void *res)
++{
++	qcom_ice_put(*(struct qcom_ice **)res);
++}
++
++/**
++ * devm_of_qcom_ice_get() - Devres managed helper to get an ICE instance from
++ * a DT node.
++ * @dev: device pointer for the consumer device.
++ *
++ * This function will provide an ICE instance either by creating one for the
++ * consumer device if its DT node provides the 'ice' reg range and the 'ice'
++ * clock (for legacy DT style). On the other hand, if consumer provides a
++ * phandle via 'qcom,ice' property to an ICE DT, the ICE instance will already
++ * be created and so this function will return that instead.
++ *
++ * Return: ICE pointer on success, ERR_PTR() on error.
++ */
++struct qcom_ice *devm_of_qcom_ice_get(struct device *dev)
++{
++	struct qcom_ice *ice, **dr;
++
++	dr = devres_alloc(devm_of_qcom_ice_put, sizeof(*dr), GFP_KERNEL);
++	if (!dr)
++		return ERR_PTR(-ENOMEM);
++
++	ice = of_qcom_ice_get(dev);
++	if (!IS_ERR(ice)) {
++		*dr = ice;
++		devres_add(dev, dr);
++	} else {
++		devres_free(dr);
++	}
++
++	return ice;
++}
++EXPORT_SYMBOL_GPL(devm_of_qcom_ice_get);
++
++static int qcom_ice_probe(struct platform_device *pdev)
++{
++	unsigned long phandle = pdev->dev.of_node->phandle;
++	struct qcom_ice *engine;
++	void __iomem *base;
++	int err;
++
++	guard(mutex)(&ice_mutex);
++
++	base = devm_platform_ioremap_resource(pdev, 0);
++	if (IS_ERR(base)) {
++		dev_warn(&pdev->dev, "ICE registers not found\n");
++		/* Store the error pointer for devm_of_qcom_ice_get() */
++		xa_store(&ice_handles, phandle, (__force void *)base, GFP_KERNEL);
++		return PTR_ERR(base);
++	}
++
++	engine = qcom_ice_create(&pdev->dev, base);
++	if (IS_ERR(engine)) {
++		/* Store the error pointer for devm_of_qcom_ice_get() */
++		xa_store(&ice_handles, phandle, engine, GFP_KERNEL);
++		return PTR_ERR(engine);
++	}
++
++<<<<<<<
++	/* qcom_ice_create() may return NULL if scm calls are not available */
++	if (!engine)
++		return -EOPNOTSUPP;
++
++	err = devm_pm_opp_set_clkname(&pdev->dev, "core");
++	if (err && err != -ENOENT) {
++		dev_err(&pdev->dev, "Unable to set core clkname to OPP-table\n");
++		return err;
++	}
++
++	/* OPP table is optional */
++	err = devm_pm_opp_of_add_table(&pdev->dev);
++	if (err && err != -ENODEV) {
++		dev_err(&pdev->dev, "Invalid OPP table in Device tree\n");
++		return err;
++	}
++
++	/*
++	 * The OPP table is optional. devm_pm_opp_of_add_table() returns
++	 * -ENODEV when no OPP table is present in DT, which is not treated
++	 * as an error. Therefore, track successful OPP registration only
++	 * when the return value is 0.
++	 */
++	engine->has_opp = (err == 0);
++	if (!engine->has_opp)
++		dev_info(&pdev->dev, "ICE OPP table is not registered, please update your DT\n");
++
++	/*
++	 * Store the core clock rate for suspend resume cycles,
++	 * against OPP aware DVFS operations. core_clk_freq will
++	 * have a valid value only for non-legacy bindings.
++	 */
++	engine->core_clk_freq = clk_get_rate(engine->core_clk);
++
++	platform_set_drvdata(pdev, engine);
++=======
++	xa_store(&ice_handles, phandle, engine, GFP_KERNEL);
++>>>>>>>
++
++	return 0;
++}
++
++static void qcom_ice_remove(struct platform_device *pdev)
++{
++	unsigned long phandle = pdev->dev.of_node->phandle;
++
++	guard(mutex)(&ice_mutex);
++	xa_store(&ice_handles, phandle, NULL, GFP_KERNEL);
++}
++
++static const struct of_device_id qcom_ice_of_match_table[] = {
++	{ .compatible = "qcom,inline-crypto-engine" },
++	{ },
++};
++MODULE_DEVICE_TABLE(of, qcom_ice_of_match_table);
++
++static struct platform_driver qcom_ice_driver = {
++	.probe	= qcom_ice_probe,
++	.remove	= qcom_ice_remove,
++	.driver = {
++		.name = "qcom-ice",
++		.of_match_table = qcom_ice_of_match_table,
++	},
++};
++
++module_platform_driver(qcom_ice_driver);
++
++MODULE_DESCRIPTION("Qualcomm Inline Crypto Engine driver");
++MODULE_LICENSE("GPL");
+diff --git a/rr-cache/5c9c648f86e4971d5258a85256337b5bb48afe50/thisimage b/rr-cache/5c9c648f86e4971d5258a85256337b5bb48afe50/thisimage
+new file mode 100644
+index 0000000..fe4cce4
+--- /dev/null
++++ b/rr-cache/5c9c648f86e4971d5258a85256337b5bb48afe50/thisimage
+@@ -0,0 +1,17 @@
++# SPDX-License-Identifier: GPL-2.0
++#
++# Makefile for the linux kernel.
++#
++
++obj-$(CONFIG_QCOM_SCM)		+= qcom-scm.o
++qcom-scm-objs += qcom_scm.o qcom_scm-smc.o qcom_scm-legacy.o
++obj-$(CONFIG_QCOM_TZMEM)	+= qcom_tzmem.o
++obj-$(CONFIG_QCOM_QSEECOM)	+= qcom_qseecom.o
++obj-$(CONFIG_QCOM_QSEECOM_UEFISECAPP) += qcom_qseecom_uefisecapp.o
++<<<<<<<
++obj-$(CONFIG_QCOM_MEMORY_DUMP_V2) += memory_dump_v2.o
++obj-$(CONFIG_QCOM_MEMORY_DUMP_DEV) += memory_dump_dev.o
++=======
++obj-$(CONFIG_QCOM_PAS)		+= qcom_pas.o
++obj-$(CONFIG_QCOM_PAS_TEE)	+= qcom_pas_tee.o
++>>>>>>>
+diff --git a/rr-cache/74b690070b13223cbdda8b9b2dbb34c46fef492b/thisimage.1 b/rr-cache/74b690070b13223cbdda8b9b2dbb34c46fef492b/thisimage.1
+new file mode 100644
+index 0000000..874a9df
+--- /dev/null
++++ b/rr-cache/74b690070b13223cbdda8b9b2dbb34c46fef492b/thisimage.1
+@@ -0,0 +1,78 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef __QCOM_MDT_LOADER_H__
++#define __QCOM_MDT_LOADER_H__
++
++#include <linux/types.h>
++
++#define QCOM_MDT_TYPE_MASK	(7 << 24)
++#define QCOM_MDT_TYPE_HASH	(2 << 24)
++#define QCOM_MDT_RELOCATABLE	BIT(27)
++
++struct device;
++struct firmware;
++struct qcom_pas_context;
++
++#if IS_ENABLED(CONFIG_QCOM_MDT_LOADER)
++
++ssize_t qcom_mdt_get_size(const struct firmware *fw);
++int qcom_mdt_load(struct device *dev, const struct firmware *fw,
++		  const char *fw_name, int pas_id, void *mem_region,
++		  phys_addr_t mem_phys, size_t mem_size,
++		  phys_addr_t *reloc_base);
++
++<<<<<<<
++int qcom_mdt_pas_load(struct qcom_pas_context *ctx, const struct firmware *fw,
++		      const char *firmware, void *mem_region, phys_addr_t *reloc_base);
++=======
++int qcom_mdt_pas_load(struct qcom_scm_pas_context *ctx, const struct firmware *fw,
++		      const char *firmware, phys_addr_t *reloc_base);
++>>>>>>>
++
++int qcom_mdt_load_no_init(struct device *dev, const struct firmware *fw,
++			  const char *fw_name, void *mem_region,
++			  phys_addr_t mem_phys, size_t mem_size,
++			  phys_addr_t *reloc_base);
++void *qcom_mdt_read_metadata(const struct firmware *fw, size_t *data_len,
++			     const char *fw_name, struct device *dev);
++
++#else /* !IS_ENABLED(CONFIG_QCOM_MDT_LOADER) */
++
++static inline ssize_t qcom_mdt_get_size(const struct firmware *fw)
++{
++	return -ENODEV;
++}
++
++static inline int qcom_mdt_load(struct device *dev, const struct firmware *fw,
++				const char *fw_name, int pas_id,
++				void *mem_region, phys_addr_t mem_phys,
++				size_t mem_size, phys_addr_t *reloc_base)
++{
++	return -ENODEV;
++}
++
++static inline int qcom_mdt_pas_load(struct qcom_pas_context *ctx,
++				    const struct firmware *fw, const char *firmware,
++				    phys_addr_t *reloc_base)
++{
++	return -ENODEV;
++}
++
++static inline int qcom_mdt_load_no_init(struct device *dev,
++					const struct firmware *fw,
++					const char *fw_name, void *mem_region,
++					phys_addr_t mem_phys, size_t mem_size,
++					phys_addr_t *reloc_base)
++{
++	return -ENODEV;
++}
++
++static inline void *qcom_mdt_read_metadata(const struct firmware *fw,
++					   size_t *data_len, const char *fw_name,
++					   struct device *dev)
++{
++	return ERR_PTR(-ENODEV);
++}
++
++#endif /* !IS_ENABLED(CONFIG_QCOM_MDT_LOADER) */
++
++#endif
+diff --git a/rr-cache/7ed380b68642318e0366ba75476d227c624c5f62/thisimage.1 b/rr-cache/7ed380b68642318e0366ba75476d227c624c5f62/thisimage.1
+new file mode 100644
+index 0000000..a206dca
+--- /dev/null
++++ b/rr-cache/7ed380b68642318e0366ba75476d227c624c5f62/thisimage.1
+@@ -0,0 +1,516 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Qualcomm Peripheral Image Loader
++ *
++ * Copyright (C) 2016 Linaro Ltd
++ * Copyright (C) 2015 Sony Mobile Communications Inc
++ * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
++ */
++
++#include <linux/cleanup.h>
++#include <linux/device.h>
++#include <linux/elf.h>
++#include <linux/firmware.h>
++#include <linux/io.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/firmware/qcom/qcom_pas.h>
++#include <linux/sizes.h>
++#include <linux/slab.h>
++#include <linux/soc/qcom/mdt_loader.h>
++
++static bool mdt_header_valid(const struct firmware *fw)
++{
++	const struct elf32_hdr *ehdr;
++	size_t phend;
++	size_t shend;
++
++	if (fw->size < sizeof(*ehdr))
++		return false;
++
++	ehdr = (struct elf32_hdr *)fw->data;
++
++	if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG))
++		return false;
++
++	if (ehdr->e_phentsize != sizeof(struct elf32_phdr))
++		return false;
++
++	phend = size_add(size_mul(sizeof(struct elf32_phdr), ehdr->e_phnum), ehdr->e_phoff);
++	if (phend > fw->size)
++		return false;
++
++	if (ehdr->e_shentsize || ehdr->e_shnum) {
++		if (ehdr->e_shentsize != sizeof(struct elf32_shdr))
++			return false;
++
++		shend = size_add(size_mul(sizeof(struct elf32_shdr), ehdr->e_shnum), ehdr->e_shoff);
++		if (shend > fw->size)
++			return false;
++	}
++
++	return true;
++}
++
++static bool mdt_phdr_loadable(const struct elf32_phdr *phdr)
++{
++	if (phdr->p_type != PT_LOAD)
++		return false;
++
++	if ((phdr->p_flags & QCOM_MDT_TYPE_MASK) == QCOM_MDT_TYPE_HASH)
++		return false;
++
++	if (!phdr->p_memsz)
++		return false;
++
++	return true;
++}
++
++static ssize_t mdt_load_split_segment(void *ptr, const struct elf32_phdr *phdrs,
++				      unsigned int segment, const char *fw_name,
++				      struct device *dev)
++{
++	const struct elf32_phdr *phdr = &phdrs[segment];
++	const struct firmware *seg_fw;
++	ssize_t ret;
++
++	if (strlen(fw_name) < 4)
++		return -EINVAL;
++
++	char *seg_name __free(kfree) = kstrdup(fw_name, GFP_KERNEL);
++	if (!seg_name)
++		return -ENOMEM;
++
++	sprintf(seg_name + strlen(fw_name) - 3, "b%02d", segment);
++	ret = request_firmware_into_buf(&seg_fw, seg_name, dev,
++					ptr, phdr->p_filesz);
++	if (ret) {
++		dev_err(dev, "error %zd loading %s\n", ret, seg_name);
++		return ret;
++	}
++
++	if (seg_fw->size != phdr->p_filesz) {
++		dev_err(dev,
++			"failed to load segment %d from truncated file %s\n",
++			segment, seg_name);
++		ret = -EINVAL;
++	}
++
++	release_firmware(seg_fw);
++
++	return ret;
++}
++
++/**
++ * qcom_mdt_get_size() - acquire size of the memory region needed to load mdt
++ * @fw:		firmware object for the mdt file
++ *
++ * Returns size of the loaded firmware blob, or -EINVAL on failure.
++ */
++ssize_t qcom_mdt_get_size(const struct firmware *fw)
++{
++	const struct elf32_phdr *phdrs;
++	const struct elf32_phdr *phdr;
++	const struct elf32_hdr *ehdr;
++	phys_addr_t min_addr = PHYS_ADDR_MAX;
++	phys_addr_t max_addr = 0;
++	int i;
++
++	if (!mdt_header_valid(fw))
++		return -EINVAL;
++
++	ehdr = (struct elf32_hdr *)fw->data;
++	phdrs = (struct elf32_phdr *)(fw->data + ehdr->e_phoff);
++
++	for (i = 0; i < ehdr->e_phnum; i++) {
++		phdr = &phdrs[i];
++
++		if (!mdt_phdr_loadable(phdr))
++			continue;
++
++		if (phdr->p_paddr < min_addr)
++			min_addr = phdr->p_paddr;
++
++		if (phdr->p_paddr + phdr->p_memsz > max_addr)
++			max_addr = ALIGN(phdr->p_paddr + phdr->p_memsz, SZ_4K);
++	}
++
++	return min_addr < max_addr ? max_addr - min_addr : -EINVAL;
++}
++EXPORT_SYMBOL_GPL(qcom_mdt_get_size);
++
++/**
++ * qcom_mdt_read_metadata() - read header and metadata from mdt or mbn
++ * @fw:		firmware of mdt header or mbn
++ * @data_len:	length of the read metadata blob
++ * @fw_name:	name of the firmware, for construction of segment file names
++ * @dev:	device handle to associate resources with
++ *
++ * The mechanism that performs the authentication of the loading firmware
++ * expects an ELF header directly followed by the segment of hashes, with no
++ * padding inbetween. This function allocates a chunk of memory for this pair
++ * and copy the two pieces into the buffer.
++ *
++ * In the case of split firmware the hash is found directly following the ELF
++ * header, rather than at p_offset described by the second program header.
++ *
++ * The caller is responsible to free (kfree()) the returned pointer.
++ *
++ * Return: pointer to data, or ERR_PTR()
++ */
++void *qcom_mdt_read_metadata(const struct firmware *fw, size_t *data_len,
++			     const char *fw_name, struct device *dev)
++{
++	const struct elf32_phdr *phdrs;
++	const struct elf32_hdr *ehdr;
++	unsigned int hash_segment = 0;
++	size_t hash_offset;
++	size_t hash_size;
++	size_t ehdr_size;
++	unsigned int i;
++	ssize_t ret;
++	void *data;
++
++	if (!mdt_header_valid(fw))
++		return ERR_PTR(-EINVAL);
++
++	ehdr = (struct elf32_hdr *)fw->data;
++	phdrs = (struct elf32_phdr *)(fw->data + ehdr->e_phoff);
++
++	if (ehdr->e_phnum < 2)
++		return ERR_PTR(-EINVAL);
++
++	if (phdrs[0].p_type == PT_LOAD)
++		return ERR_PTR(-EINVAL);
++
++	for (i = 1; i < ehdr->e_phnum; i++) {
++		if ((phdrs[i].p_flags & QCOM_MDT_TYPE_MASK) == QCOM_MDT_TYPE_HASH) {
++			hash_segment = i;
++			break;
++		}
++	}
++
++	if (!hash_segment) {
++		dev_err(dev, "no hash segment found in %s\n", fw_name);
++		return ERR_PTR(-EINVAL);
++	}
++
++	ehdr_size = phdrs[0].p_filesz;
++	hash_size = phdrs[hash_segment].p_filesz;
++
++	data = kmalloc(ehdr_size + hash_size, GFP_KERNEL);
++	if (!data)
++		return ERR_PTR(-ENOMEM);
++
++	/* Copy ELF header */
++	memcpy(data, fw->data, ehdr_size);
++
++	if (ehdr_size + hash_size == fw->size) {
++		/* Firmware is split and hash is packed following the ELF header */
++		hash_offset = phdrs[0].p_filesz;
++		memcpy(data + ehdr_size, fw->data + hash_offset, hash_size);
++	} else if (phdrs[hash_segment].p_offset + hash_size <= fw->size) {
++		/* Hash is in its own segment, but within the loaded file */
++		hash_offset = phdrs[hash_segment].p_offset;
++		memcpy(data + ehdr_size, fw->data + hash_offset, hash_size);
++	} else {
++		/* Hash is in its own segment, beyond the loaded file */
++		ret = mdt_load_split_segment(data + ehdr_size, phdrs, hash_segment, fw_name, dev);
++		if (ret) {
++			kfree(data);
++			return ERR_PTR(ret);
++		}
++	}
++
++	*data_len = ehdr_size + hash_size;
++
++	return data;
++}
++EXPORT_SYMBOL_GPL(qcom_mdt_read_metadata);
++
++static int __qcom_mdt_pas_init(struct device *dev, const struct firmware *fw,
++			       const char *fw_name, int pas_id, phys_addr_t mem_phys,
++			       struct qcom_pas_context *ctx)
++{
++	const struct elf32_phdr *phdrs;
++	const struct elf32_phdr *phdr;
++	const struct elf32_hdr *ehdr;
++	phys_addr_t min_addr = PHYS_ADDR_MAX;
++	phys_addr_t max_addr = 0;
++	bool relocate = false;
++	size_t metadata_len;
++	void *metadata;
++	int ret;
++	int i;
++
++	if (!mdt_header_valid(fw))
++		return -EINVAL;
++
++	ehdr = (struct elf32_hdr *)fw->data;
++	phdrs = (struct elf32_phdr *)(fw->data + ehdr->e_phoff);
++
++	for (i = 0; i < ehdr->e_phnum; i++) {
++		phdr = &phdrs[i];
++
++		if (!mdt_phdr_loadable(phdr))
++			continue;
++
++		if (phdr->p_flags & QCOM_MDT_RELOCATABLE)
++			relocate = true;
++
++		if (phdr->p_paddr < min_addr)
++			min_addr = phdr->p_paddr;
++
++		if (phdr->p_paddr + phdr->p_memsz > max_addr)
++			max_addr = ALIGN(phdr->p_paddr + phdr->p_memsz, SZ_4K);
++	}
++
++	metadata = qcom_mdt_read_metadata(fw, &metadata_len, fw_name, dev);
++	if (IS_ERR(metadata)) {
++		ret = PTR_ERR(metadata);
++		dev_err(dev, "error %d reading firmware %s metadata\n", ret, fw_name);
++		goto out;
++	}
++
++	ret = qcom_pas_init_image(pas_id, metadata, metadata_len, ctx);
++	kfree(metadata);
++	if (ret) {
++		/* Invalid firmware metadata */
++		dev_err(dev, "error %d initializing firmware %s\n", ret, fw_name);
++		goto out;
++	}
++
++	if (relocate) {
++		ret = qcom_pas_mem_setup(pas_id, mem_phys, max_addr - min_addr);
++		if (ret) {
++			/* Unable to set up relocation */
++			dev_err(dev, "error %d setting up firmware %s\n", ret, fw_name);
++			goto out;
++		}
++	}
++
++out:
++	return ret;
++}
++
++static bool qcom_mdt_bins_are_split(const struct firmware *fw)
++{
++	const struct elf32_phdr *phdrs;
++	const struct elf32_hdr *ehdr;
++	uint64_t seg_start, seg_end;
++	int i;
++
++	ehdr = (struct elf32_hdr *)fw->data;
++	phdrs = (struct elf32_phdr *)(fw->data + ehdr->e_phoff);
++
++	for (i = 0; i < ehdr->e_phnum; i++) {
++		/*
++		 * The size of the MDT file is not padded to include any
++		 * zero-sized segments at the end. Ignore these, as they should
++		 * not affect the decision about image being split or not.
++		 */
++		if (!phdrs[i].p_filesz)
++			continue;
++
++		seg_start = phdrs[i].p_offset;
++		seg_end = phdrs[i].p_offset + phdrs[i].p_filesz;
++		if (seg_start > fw->size || seg_end > fw->size)
++			return true;
++	}
++
++	return false;
++}
++
++/**
++ * qcom_mdt_load_no_init() - load the firmware which header is loaded as fw
++ * @dev:	device handle to associate resources with
++ * @fw:		firmware object for the mdt file
++ * @fw_name:	name of the firmware, for construction of segment file names
++ * @mem_region:	allocated memory region to load firmware into
++ * @mem_phys:	physical address of allocated memory region
++ * @mem_size:	size of the allocated memory region
++ * @reloc_base:	adjusted physical address after relocation
++ *
++ * Returns 0 on success, negative errno otherwise.
++ */
++int qcom_mdt_load_no_init(struct device *dev, const struct firmware *fw,
++			  const char *fw_name, void *mem_region,
++			  phys_addr_t mem_phys, size_t mem_size,
++			  phys_addr_t *reloc_base)
++{
++	const struct elf32_phdr *phdrs;
++	const struct elf32_phdr *phdr;
++	const struct elf32_hdr *ehdr;
++	phys_addr_t mem_reloc;
++	phys_addr_t min_addr = PHYS_ADDR_MAX;
++	ssize_t offset;
++	bool relocate = false;
++	bool is_split;
++	void *ptr;
++	int ret = 0;
++	int i;
++
++	if (!fw || !mem_region || !mem_phys || !mem_size)
++		return -EINVAL;
++
++	if (!mdt_header_valid(fw))
++		return -EINVAL;
++
++	is_split = qcom_mdt_bins_are_split(fw);
++	ehdr = (struct elf32_hdr *)fw->data;
++	phdrs = (struct elf32_phdr *)(fw->data + ehdr->e_phoff);
++
++	for (i = 0; i < ehdr->e_phnum; i++) {
++		phdr = &phdrs[i];
++
++		if (!mdt_phdr_loadable(phdr))
++			continue;
++
++		if (phdr->p_flags & QCOM_MDT_RELOCATABLE)
++			relocate = true;
++
++		if (phdr->p_paddr < min_addr)
++			min_addr = phdr->p_paddr;
++	}
++
++	if (relocate) {
++		/*
++		 * The image is relocatable, so offset each segment based on
++		 * the lowest segment address.
++		 */
++		mem_reloc = min_addr;
++	} else {
++		/*
++		 * Image is not relocatable, so offset each segment based on
++		 * the allocated physical chunk of memory.
++		 */
++		mem_reloc = mem_phys;
++	}
++
++	for (i = 0; i < ehdr->e_phnum; i++) {
++		phdr = &phdrs[i];
++
++		if (!mdt_phdr_loadable(phdr))
++			continue;
++
++		offset = phdr->p_paddr - mem_reloc;
++		if (offset < 0 || offset + phdr->p_memsz > mem_size) {
++			dev_err(dev, "segment outside memory range\n");
++			ret = -EINVAL;
++			break;
++		}
++
++		if (phdr->p_filesz > phdr->p_memsz) {
++			dev_err(dev,
++				"refusing to load segment %d with p_filesz > p_memsz\n",
++				i);
++			ret = -EINVAL;
++			break;
++		}
++
++		ptr = mem_region + offset;
++
++		if (phdr->p_filesz && !is_split) {
++			/* Firmware is large enough to be non-split */
++			if (phdr->p_offset + phdr->p_filesz > fw->size) {
++				dev_err(dev, "file %s segment %d would be truncated\n",
++					fw_name, i);
++				ret = -EINVAL;
++				break;
++			}
++
++			memcpy(ptr, fw->data + phdr->p_offset, phdr->p_filesz);
++		} else if (phdr->p_filesz) {
++			/* Firmware not large enough, load split-out segments */
++			ret = mdt_load_split_segment(ptr, phdrs, i, fw_name, dev);
++			if (ret)
++				break;
++		}
++
++		if (phdr->p_memsz > phdr->p_filesz)
++			memset(ptr + phdr->p_filesz, 0, phdr->p_memsz - phdr->p_filesz);
++	}
++
++	if (reloc_base)
++		*reloc_base = mem_reloc;
++
++	return ret;
++}
++EXPORT_SYMBOL_GPL(qcom_mdt_load_no_init);
++
++/**
++ * qcom_mdt_load() - load the firmware which header is loaded as fw
++ * @dev:	device handle to associate resources with
++ * @fw:		firmware object for the mdt file
++ * @fw_name:	name of the firmware, for construction of segment file names
++ * @pas_id:	PAS identifier
++ * @mem_region:	allocated memory region to load firmware into
++ * @mem_phys:	physical address of allocated memory region
++ * @mem_size:	size of the allocated memory region
++ * @reloc_base:	adjusted physical address after relocation
++ *
++ * Returns 0 on success, negative errno otherwise.
++ */
++int qcom_mdt_load(struct device *dev, const struct firmware *fw,
++		  const char *fw_name, int pas_id, void *mem_region,
++		  phys_addr_t mem_phys, size_t mem_size,
++		  phys_addr_t *reloc_base)
++{
++	int ret;
++
++	ret = __qcom_mdt_pas_init(dev, fw, fw_name, pas_id, mem_phys, NULL);
++	if (ret)
++		return ret;
++
++	return qcom_mdt_load_no_init(dev, fw, fw_name, mem_region, mem_phys,
++				     mem_size, reloc_base);
++}
++EXPORT_SYMBOL_GPL(qcom_mdt_load);
++
++/**
++ * qcom_mdt_pas_load - Loads and authenticates the metadata of the firmware
++ * (typically contained in the .mdt file), followed by loading the actual
++ * firmware segments (e.g., .bXX files). Authentication of the segments done
++ * by a separate call.
++ *
++ * The PAS context must be initialized using devm_qcom_pas_context_alloc()
++ * prior to invoking this function.
++ *
++ * @ctx:        Pointer to the PAS (Peripheral Authentication Service) context
++ * @fw:         Firmware object representing the .mdt file
++ * @firmware:   Name of the firmware used to construct segment file names
++ * @reloc_base: Physical address adjusted after relocation
++ *
++ * Return: 0 on success or a negative error code on failure.
++ */
++<<<<<<<
++int qcom_mdt_pas_load(struct qcom_pas_context *ctx, const struct firmware *fw,
++		      const char *firmware, void *mem_region, phys_addr_t *reloc_base)
++=======
++int qcom_mdt_pas_load(struct qcom_scm_pas_context *ctx, const struct firmware *fw,
++		      const char *firmware, phys_addr_t *reloc_base)
++>>>>>>>
++{
++	void *mem_region;
++	int ret;
++
++	ret = __qcom_mdt_pas_init(ctx->dev, fw, firmware, ctx->pas_id, ctx->mem_phys, ctx);
++	if (ret)
++		return ret;
++
++	mem_region = ioremap_wc(ctx->mem_phys, ctx->mem_size);
++	if (!mem_region) {
++		dev_err(ctx->dev, "unable to map memory region: %pa+%zx\n", &ctx->mem_phys,
++			ctx->mem_size);
++		return -EINVAL;
++	}
++
++	ret = qcom_mdt_load_no_init(ctx->dev, fw, firmware, mem_region, ctx->mem_phys,
++				    ctx->mem_size, reloc_base);
++	iounmap(mem_region);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(qcom_mdt_pas_load);
++
++MODULE_DESCRIPTION("Firmware parser for Qualcomm MDT format");
++MODULE_LICENSE("GPL v2");
+diff --git a/rr-cache/90fe5b28fccb7cabdce5b85e39db73d70d595f30/thisimage.1 b/rr-cache/90fe5b28fccb7cabdce5b85e39db73d70d595f30/thisimage.1
+new file mode 100644
+index 0000000..4ceab87
+--- /dev/null
++++ b/rr-cache/90fe5b28fccb7cabdce5b85e39db73d70d595f30/thisimage.1
+@@ -0,0 +1,231 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
++ */
++
++#include <linux/device.h>
++#include <linux/firmware.h>
++#include <linux/firmware/qcom/qcom_pas.h>
++#include <linux/firmware/qcom/qcom_scm.h>
++#include <linux/iommu.h>
++#include <linux/of.h>
++#include <linux/of_address.h>
++#include <linux/of_device.h>
++#include <linux/of_reserved_mem.h>
++#include <linux/platform_device.h>
++#include <linux/soc/qcom/mdt_loader.h>
++
++#include "iris_core.h"
++#include "iris_firmware.h"
++
++#define IRIS_PAS_ID	9
++
++#define MAX_FIRMWARE_NAME_SIZE	128
++
++static int iris_load_fw_to_memory(struct iris_core *core, const char *fw_name)
++{
++	struct qcom_scm_pas_context *ctx;
++	const struct firmware *firmware = NULL;
++	struct device *dev = core->dev;
++	struct resource res;
++	phys_addr_t mem_phys;
++	size_t res_size;
++	ssize_t fw_size;
++	int ret;
++
++	if (strlen(fw_name) >= MAX_FIRMWARE_NAME_SIZE - 4)
++		return -EINVAL;
++
++	ret = of_reserved_mem_region_to_resource(dev->of_node, 0, &res);
++	if (ret)
++		return ret;
++
++	mem_phys = res.start;
++	res_size = resource_size(&res);
++
++	dev = core->fw.dev ? : core->dev;
++
++	ctx = devm_qcom_scm_pas_context_alloc(dev, IRIS_PAS_ID, mem_phys, res_size);
++	if (!ctx)
++		return -ENOMEM;
++
++	ctx->use_tzmem = core->fw.dev;
++
++	ret = request_firmware(&firmware, fw_name, dev);
++	if (ret)
++		return ret;
++
++	fw_size = qcom_mdt_get_size(firmware);
++	if (fw_size < 0 || res_size < (size_t)fw_size) {
++		ret = -EINVAL;
++		goto err_release_fw;
++	}
++
++	ret = qcom_mdt_pas_load(ctx, firmware, fw_name, NULL);
++	qcom_scm_pas_metadata_release(ctx);
++	if (ret)
++		goto err_release_fw;
++
++	if (core->fw.iommu_domain) {
++		ret = iommu_map(core->fw.iommu_domain, 0, mem_phys, res_size,
++				IOMMU_READ | IOMMU_WRITE | IOMMU_PRIV, GFP_KERNEL);
++		if (ret)
++			goto err_release_fw;
++	}
++
++	ret = qcom_scm_pas_prepare_and_auth_reset(ctx);
++	if (ret)
++		goto err_iommu_unmap;
++
++	core->fw.ctx = ctx;
++
++	return ret;
++
++err_iommu_unmap:
++	iommu_unmap(core->fw.iommu_domain, 0, res_size);
++err_release_fw:
++	release_firmware(firmware);
++
++	return ret;
++}
++
++int iris_fw_load(struct iris_core *core)
++{
++	const struct tz_cp_config *cp_config;
++	const char *fwpath = NULL;
++	int i, ret;
++
++	ret = of_property_read_string_index(core->dev->of_node, "firmware-name", 0,
++					    &fwpath);
++	if (ret)
++		fwpath = core->iris_firmware_desc->fwname;
++
++	ret = iris_load_fw_to_memory(core, fwpath);
++	if (ret) {
++		dev_err(core->dev, "firmware download failed\n");
++		return -ENOMEM;
++	}
++
++<<<<<<<
++=======
++	ret = qcom_pas_auth_and_reset(core->iris_platform_data->pas_id);
++	if (ret)  {
++		dev_err(core->dev, "auth and reset failed: %d\n", ret);
++		return ret;
++	}
++
++>>>>>>>
++	for (i = 0; i < core->iris_platform_data->tz_cp_config_data_size; i++) {
++		cp_config = &core->iris_platform_data->tz_cp_config_data[i];
++		ret = qcom_scm_mem_protect_video_var(cp_config->cp_start,
++						     cp_config->cp_size,
++						     cp_config->cp_nonpixel_start,
++						     cp_config->cp_nonpixel_size);
++		if (ret) {
++			dev_err(core->dev, "qcom_scm_mem_protect_video_var failed: %d\n", ret);
++<<<<<<<
++			qcom_pas_shutdown(core->iris_platform_data->pas_id);
++=======
++			qcom_scm_pas_shutdown(IRIS_PAS_ID);
++>>>>>>>
++			return ret;
++		}
++	}
++
++	return ret;
++}
++
++int iris_fw_unload(struct iris_core *core)
++{
++<<<<<<<
++	return qcom_pas_shutdown(core->iris_platform_data->pas_id);
++=======
++	struct qcom_scm_pas_context *ctx = core->fw.ctx;
++	int ret;
++
++	if (!ctx)
++		return -EINVAL;
++
++	ret = qcom_scm_pas_shutdown(ctx->pas_id);
++	if (core->fw.iommu_domain)
++		iommu_unmap(core->fw.iommu_domain, 0, ctx->mem_size);
++
++	core->fw.ctx = NULL;
++	return ret;
++>>>>>>>
++}
++
++int iris_set_hw_state(struct iris_core *core, bool resume)
++{
++	return qcom_pas_set_remote_state(resume, core->iris_platform_data->pas_id);
++}
++
++int iris_fw_init(struct iris_core *core)
++{
++	struct platform_device_info info;
++	struct iommu_domain *iommu_dom;
++	struct platform_device *pdev;
++	struct device_node *np;
++	int ret;
++
++	np = of_get_child_by_name(core->dev->of_node, "video-firmware");
++	if (!np)
++		return 0;
++
++	memset(&info, 0, sizeof(info));
++	info.fwnode = &np->fwnode;
++	info.parent = core->dev;
++	info.name = np->name;
++	info.dma_mask = DMA_BIT_MASK(32);
++
++	pdev = platform_device_register_full(&info);
++	if (IS_ERR(pdev)) {
++		of_node_put(np);
++		return PTR_ERR(pdev);
++	}
++
++	pdev->dev.of_node = np;
++
++	ret = of_dma_configure(&pdev->dev, np, true);
++	if (ret)
++		goto err_unregister;
++
++	core->fw.dev = &pdev->dev;
++
++	iommu_dom = iommu_get_domain_for_dev(core->fw.dev);
++	if (!iommu_dom) {
++		ret = -EINVAL;
++		goto err_unset_fw_dev;
++	}
++
++	ret = iommu_attach_device(iommu_dom, core->fw.dev);
++	if (ret)
++		goto err_unset_fw_dev;
++
++	core->fw.iommu_domain = iommu_dom;
++
++	of_node_put(np);
++
++	return 0;
++
++err_unset_fw_dev:
++	core->fw.dev = NULL;
++err_unregister:
++	platform_device_unregister(pdev);
++	of_node_put(np);
++	return ret;
++}
++
++void iris_fw_deinit(struct iris_core *core)
++{
++	if (!core->fw.dev)
++		return;
++
++	if (core->fw.iommu_domain) {
++		iommu_detach_device(core->fw.iommu_domain, core->fw.dev);
++		core->fw.iommu_domain = NULL;
++	}
++
++	platform_device_unregister(to_platform_device(core->fw.dev));
++	core->fw.dev = NULL;
++}
+diff --git a/rr-cache/ac7a820f6ae871679476b95fecda57fe0113dea2/thisimage b/rr-cache/ac7a820f6ae871679476b95fecda57fe0113dea2/thisimage
+new file mode 100644
+index 0000000..2e804d7
+--- /dev/null
++++ b/rr-cache/ac7a820f6ae871679476b95fecda57fe0113dea2/thisimage
+@@ -0,0 +1,211 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/* Copyright (c) 2010-2015, 2018-2019 The Linux Foundation. All rights reserved.
++ * Copyright (C) 2015 Linaro Ltd.
++ */
++#ifndef __QCOM_SCM_H
++#define __QCOM_SCM_H
++
++#include <linux/err.h>
++#include <linux/types.h>
++#include <linux/cpumask.h>
++
++#include <dt-bindings/firmware/qcom,scm.h>
++#include <asm-generic/errno-base.h>
++
++#define QCOM_SCM_VERSION(major, minor)	(((major) << 16) | ((minor) & 0xFF))
++#define QCOM_SCM_CPU_PWR_DOWN_L2_ON	0x0
++#define QCOM_SCM_CPU_PWR_DOWN_L2_OFF	0x1
++#define QCOM_SCM_CAMERA_MAX_QOS_CNT	2
++#define QCOM_SCM_HDCP_MAX_REQ_CNT	5
++
++struct qcom_scm_hdcp_req {
++	u32 addr;
++	u32 val;
++};
++
++struct qcom_scm_vmperm {
++	int vmid;
++	int perm;
++};
++
++enum qcom_scm_ocmem_client {
++	QCOM_SCM_OCMEM_UNUSED_ID = 0x0,
++	QCOM_SCM_OCMEM_GRAPHICS_ID,
++	QCOM_SCM_OCMEM_VIDEO_ID,
++	QCOM_SCM_OCMEM_LP_AUDIO_ID,
++	QCOM_SCM_OCMEM_SENSORS_ID,
++	QCOM_SCM_OCMEM_OTHER_OS_ID,
++	QCOM_SCM_OCMEM_DEBUG_ID,
++};
++
++enum qcom_scm_sec_dev_id {
++	QCOM_SCM_MDSS_DEV_ID    = 1,
++	QCOM_SCM_OCMEM_DEV_ID   = 5,
++	QCOM_SCM_PCIE0_DEV_ID   = 11,
++	QCOM_SCM_PCIE1_DEV_ID   = 12,
++	QCOM_SCM_GFX_DEV_ID     = 18,
++	QCOM_SCM_UFS_DEV_ID     = 19,
++	QCOM_SCM_ICE_DEV_ID     = 20,
++};
++
++enum qcom_scm_ice_cipher {
++	QCOM_SCM_ICE_CIPHER_AES_128_XTS = 0,
++	QCOM_SCM_ICE_CIPHER_AES_128_CBC = 1,
++	QCOM_SCM_ICE_CIPHER_AES_256_XTS = 3,
++	QCOM_SCM_ICE_CIPHER_AES_256_CBC = 4,
++};
++
++#define QCOM_SCM_PERM_READ       0x4
++#define QCOM_SCM_PERM_WRITE      0x2
++#define QCOM_SCM_PERM_EXEC       0x1
++#define QCOM_SCM_PERM_RW (QCOM_SCM_PERM_READ | QCOM_SCM_PERM_WRITE)
++#define QCOM_SCM_PERM_RWX (QCOM_SCM_PERM_RW | QCOM_SCM_PERM_EXEC)
++
++bool qcom_scm_is_available(void);
++
++int qcom_scm_set_cold_boot_addr(void *entry);
++int qcom_scm_set_warm_boot_addr(void *entry);
++void qcom_scm_cpu_power_down(u32 flags);
++<<<<<<<
++=======
++int qcom_scm_set_remote_state(u32 state, u32 id);
++
++struct qcom_scm_pas_context {
++	struct device *dev;
++	u32 pas_id;
++	phys_addr_t mem_phys;
++	size_t mem_size;
++	void *ptr;
++	dma_addr_t phys;
++	ssize_t size;
++	bool use_tzmem;
++};
++
++struct qcom_scm_camera_qos {
++	u32 offset;
++	u32 val;
++};
++
++int qcom_scm_camera_update_camnoc_qos(uint32_t use_case_id,
++		uint32_t qos_cnt, struct qcom_scm_camera_qos *scm_buf);
++
++struct qcom_scm_pas_context *devm_qcom_scm_pas_context_alloc(struct device *dev,
++							     u32 pas_id,
++							     phys_addr_t mem_phys,
++							     size_t mem_size);
++int qcom_scm_pas_init_image(u32 pas_id, const void *metadata, size_t size,
++			    struct qcom_scm_pas_context *ctx);
++void qcom_scm_pas_metadata_release(struct qcom_scm_pas_context *ctx);
++int qcom_scm_pas_mem_setup(u32 pas_id, phys_addr_t addr, phys_addr_t size);
++int qcom_scm_pas_auth_and_reset(u32 pas_id);
++int qcom_scm_pas_shutdown(u32 pas_id);
++bool qcom_scm_pas_supported(u32 pas_id);
++struct resource_table *qcom_scm_pas_get_rsc_table(struct qcom_scm_pas_context *ctx,
++						  void *input_rt, size_t input_rt_size,
++						  size_t *output_rt_size);
++
++int qcom_scm_pas_prepare_and_auth_reset(struct qcom_scm_pas_context *ctx);
++>>>>>>>
++
++int qcom_scm_io_readl(phys_addr_t addr, unsigned int *val);
++int qcom_scm_io_writel(phys_addr_t addr, unsigned int val);
++
++bool qcom_scm_restore_sec_cfg_available(void);
++int qcom_scm_restore_sec_cfg(u32 device_id, u32 spare);
++int qcom_scm_set_gpu_smmu_aperture(unsigned int context_bank);
++bool qcom_scm_set_gpu_smmu_aperture_is_available(void);
++int qcom_scm_iommu_secure_ptbl_size(u32 spare, size_t *size);
++int qcom_scm_iommu_secure_ptbl_init(u64 addr, u32 size, u32 spare);
++int qcom_scm_iommu_set_cp_pool_size(u32 spare, u32 size);
++int qcom_scm_mem_protect_video_var(u32 cp_start, u32 cp_size,
++				   u32 cp_nonpixel_start, u32 cp_nonpixel_size);
++int qcom_scm_assign_mem(phys_addr_t mem_addr, size_t mem_sz, u64 *src,
++			const struct qcom_scm_vmperm *newvm,
++			unsigned int dest_cnt);
++
++bool qcom_scm_ocmem_lock_available(void);
++int qcom_scm_ocmem_lock(enum qcom_scm_ocmem_client id, u32 offset, u32 size,
++			u32 mode);
++int qcom_scm_ocmem_unlock(enum qcom_scm_ocmem_client id, u32 offset, u32 size);
++
++bool qcom_scm_ice_available(void);
++int qcom_scm_ice_invalidate_key(u32 index);
++int qcom_scm_ice_set_key(u32 index, const u8 *key, u32 key_size,
++			 enum qcom_scm_ice_cipher cipher, u32 data_unit_size);
++bool qcom_scm_has_wrapped_key_support(void);
++int qcom_scm_derive_sw_secret(const u8 *eph_key, size_t eph_key_size,
++			      u8 *sw_secret, size_t sw_secret_size);
++int qcom_scm_generate_ice_key(u8 *lt_key, size_t lt_key_size);
++int qcom_scm_prepare_ice_key(const u8 *lt_key, size_t lt_key_size,
++			     u8 *eph_key, size_t eph_key_size);
++int qcom_scm_import_ice_key(const u8 *raw_key, size_t raw_key_size,
++			    u8 *lt_key, size_t lt_key_size);
++
++bool qcom_scm_hdcp_available(void);
++int qcom_scm_hdcp_req(struct qcom_scm_hdcp_req *req, u32 req_cnt, u32 *resp);
++
++int qcom_scm_iommu_set_pt_format(u32 sec_id, u32 ctx_num, u32 pt_fmt);
++int qcom_scm_qsmmu500_wait_safe_toggle(bool en);
++
++int qcom_scm_lmh_dcvsh(u32 payload_fn, u32 payload_reg, u32 payload_val,
++		       u64 limit_node, u32 node_id, u64 version);
++int qcom_scm_lmh_profile_change(u32 profile_id);
++bool qcom_scm_lmh_dcvsh_available(void);
++
++/*
++ * Request TZ to program set of access controlled registers necessary
++ * irrespective of any features
++ */
++#define QCOM_SCM_GPU_ALWAYS_EN_REQ BIT(0)
++/*
++ * Request TZ to program BCL id to access controlled register when BCL is
++ * enabled
++ */
++#define QCOM_SCM_GPU_BCL_EN_REQ BIT(1)
++/*
++ * Request TZ to program set of access controlled register for CLX feature
++ * when enabled
++ */
++#define QCOM_SCM_GPU_CLX_EN_REQ BIT(2)
++/*
++ * Request TZ to program tsense ids to access controlled registers for reading
++ * gpu temperature sensors
++ */
++#define QCOM_SCM_GPU_TSENSE_EN_REQ BIT(3)
++
++int qcom_scm_gpu_init_regs(u32 gpu_req);
++
++int qcom_scm_shm_bridge_create(u64 pfn_and_ns_perm_flags,
++			       u64 ipfn_and_s_perm_flags, u64 size_and_flags,
++			       u64 ns_vmids, u64 *handle);
++int qcom_scm_shm_bridge_delete(u64 handle);
++
++#ifdef CONFIG_QCOM_QSEECOM
++
++int qcom_scm_qseecom_app_get_id(const char *app_name, u32 *app_id);
++int qcom_scm_qseecom_app_send(u32 app_id, void *req, size_t req_size,
++			      void *rsp, size_t rsp_size);
++
++#else /* CONFIG_QCOM_QSEECOM */
++
++static inline int qcom_scm_qseecom_app_get_id(const char *app_name, u32 *app_id)
++{
++	return -EINVAL;
++}
++
++static inline int qcom_scm_qseecom_app_send(u32 app_id,
++					    void *req, size_t req_size,
++					    void *rsp, size_t rsp_size)
++{
++	return -EINVAL;
++}
++
++#endif /* CONFIG_QCOM_QSEECOM */
++
++int qcom_scm_qtee_invoke_smc(phys_addr_t inbuf, size_t inbuf_size,
++			     phys_addr_t outbuf, size_t outbuf_size,
++			     u64 *result, u64 *response_type);
++int qcom_scm_qtee_callback_response(phys_addr_t buf, size_t buf_size,
++				    u64 *result, u64 *response_type);
++
++#endif
+diff --git a/rr-cache/f6310ef252db7727d89a76f4a010b31668ef5719/postimage.2 b/rr-cache/f6310ef252db7727d89a76f4a010b31668ef5719/postimage.2
+new file mode 100644
+index 0000000..b0cfb9b
+--- /dev/null
++++ b/rr-cache/f6310ef252db7727d89a76f4a010b31668ef5719/postimage.2
+@@ -0,0 +1,521 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (C) 2017 Linaro Ltd.
++ */
++
++#include <linux/device.h>
++#include <linux/firmware.h>
++#include <linux/kernel.h>
++#include <linux/iommu.h>
++#include <linux/io.h>
++#include <linux/of.h>
++#include <linux/of_reserved_mem.h>
++#include <linux/platform_device.h>
++#include <linux/of_device.h>
++#include <linux/firmware/qcom/qcom_pas.h>
++#include <linux/firmware/qcom/qcom_scm.h>
++#include <linux/sizes.h>
++#include <linux/soc/qcom/mdt_loader.h>
++#include <dt-bindings/media/qcom,qcs615-venus.h>
++
++#include "core.h"
++#include "firmware.h"
++#include "hfi_venus_io.h"
++
++#define VENUS_PAS_ID			9
++#define VENUS_FW_MEM_SIZE		(6 * SZ_1M)
++#define VENUS_FW_START_ADDR		0x0
++
++static void venus_reset_cpu(struct venus_core *core)
++{
++	u32 fw_size = core->fw.mapped_mem_size;
++	void __iomem *wrapper_base;
++
++	if (IS_IRIS2(core) || IS_IRIS2_1(core))
++		wrapper_base = core->wrapper_tz_base;
++	else
++		wrapper_base = core->wrapper_base;
++
++	writel(0, wrapper_base + WRAPPER_FW_START_ADDR);
++	writel(fw_size, wrapper_base + WRAPPER_FW_END_ADDR);
++	writel(0, wrapper_base + WRAPPER_CPA_START_ADDR);
++	writel(fw_size, wrapper_base + WRAPPER_CPA_END_ADDR);
++	writel(fw_size, wrapper_base + WRAPPER_NONPIX_START_ADDR);
++	writel(fw_size, wrapper_base + WRAPPER_NONPIX_END_ADDR);
++
++	if (IS_IRIS2(core) || IS_IRIS2_1(core)) {
++		/* Bring XTSS out of reset */
++		writel(0, wrapper_base + WRAPPER_TZ_XTSS_SW_RESET);
++	} else {
++		writel(0x0, wrapper_base + WRAPPER_CPU_CGC_DIS);
++		writel(0x0, wrapper_base + WRAPPER_CPU_CLOCK_CONFIG);
++
++		/* Bring ARM9 out of reset */
++		writel(0, wrapper_base + WRAPPER_A9SS_SW_RESET);
++	}
++}
++
++int venus_set_hw_state(struct venus_core *core, bool resume)
++{
++	int ret;
++
++	if (core->use_tz) {
++		ret = qcom_pas_set_remote_state(resume, VENUS_PAS_ID);
++		if (resume && ret == -EINVAL)
++			ret = 0;
++		return ret;
++	}
++
++	if (resume) {
++		venus_reset_cpu(core);
++	} else {
++		if (IS_IRIS2(core) || IS_IRIS2_1(core))
++			writel(WRAPPER_XTSS_SW_RESET_BIT,
++			       core->wrapper_tz_base + WRAPPER_TZ_XTSS_SW_RESET);
++		else
++			writel(WRAPPER_A9SS_SW_RESET_BIT,
++			       core->wrapper_base + WRAPPER_A9SS_SW_RESET);
++	}
++
++	return 0;
++}
++
++static int venus_load_fw_prepare(struct venus_core *core, const char *fwname,
++				 phys_addr_t *mem_phys, size_t *res_size,
++				 const struct firmware **mdt)
++{
++	struct resource res;
++	ssize_t fw_size;
++	int ret;
++
++	ret = of_reserved_mem_region_to_resource(core->dev->of_node, 0, &res);
++	if (ret) {
++		dev_err(core->dev, "failed to lookup reserved memory-region\n");
++		return -EINVAL;
++	}
++
++	*mem_phys = res.start;
++	*res_size = resource_size(&res);
++
++	ret = request_firmware(mdt, fwname, core->dev);
++	if (ret < 0) {
++		dev_err(core->dev, "%s: request_firmware: %d\n", __func__, ret);
++		return ret;
++	}
++
++	fw_size = qcom_mdt_get_size(*mdt);
++	if (fw_size < 0) {
++		ret = fw_size;
++		goto err_release;
++	}
++
++	if (*res_size < fw_size || fw_size > VENUS_FW_MEM_SIZE) {
++		ret = -EINVAL;
++		goto err_release;
++	}
++
++	return 0;
++
++err_release:
++	release_firmware(*mdt);
++	return ret;
++}
++
++static int venus_load_fw(struct venus_core *core,
++			 const struct firmware *mdt, const char *fwname,
++			 phys_addr_t mem_phys, size_t res_size)
++{
++	struct qcom_scm_pas_context *ctx;
++	struct device *dev;
++	int ret;
++
++	dev = core->fw.dev ? core->fw.dev : core->dev;
++	ctx = devm_qcom_scm_pas_context_alloc(dev, VENUS_PAS_ID, mem_phys, res_size);
++	if (!ctx) {
++		dev_err(core->dev, "%s: ctx is null\n", __func__);
++		return -ENOMEM;
++	}
++
++	ctx->use_tzmem = !!core->fw.dev;
++
++	ret = qcom_mdt_pas_load(ctx, mdt, fwname, NULL);
++	qcom_scm_pas_metadata_release(ctx);
++	if (ret) {
++		dev_err(core->dev, "%s: qcom_mdt_pas_load: %d\n", __func__, ret);
++		return ret;
++	}
++
++	if (core->fw.iommu_domain) {
++		ret = iommu_map(core->fw.iommu_domain, 0, mem_phys, res_size,
++				IOMMU_READ | IOMMU_WRITE | IOMMU_PRIV, GFP_KERNEL);
++		if (ret) {
++			dev_err(core->dev, "%s: iommu_map: %d\n", __func__, ret);
++			return ret;
++		}
++	}
++
++	core->fw.mapped_mem_size = res_size;
++
++	ret = qcom_scm_pas_prepare_and_auth_reset(ctx);
++	if (ret) {
++		dev_err(core->dev, "%s: qcom_scm_pas_prepare_and_auth_reset: %d\n", __func__, ret);
++		if (core->fw.iommu_domain)
++			iommu_unmap(core->fw.iommu_domain, 0, res_size);
++		core->fw.mapped_mem_size = 0;
++		return ret;
++	}
++
++	core->fw.ctx = ctx;
++	return 0;
++}
++
++static int venus_load_fw_no_tz(struct venus_core *core,
++			       const struct firmware *mdt, const char *fwname,
++			       phys_addr_t mem_phys, size_t res_size)
++{
++	void *mem_va;
++	int ret;
++
++	mem_va = memremap(mem_phys, res_size, MEMREMAP_WC);
++	if (!mem_va) {
++		dev_err(core->dev,
++			"unable to map memory region %pa size %#zx\n", &mem_phys, res_size);
++		return -ENOMEM;
++	}
++
++	ret = qcom_mdt_load_no_init(core->fw.dev, mdt, fwname, mem_va, mem_phys, res_size, NULL);
++	memunmap(mem_va);
++	if (ret) {
++		dev_err(core->dev, "%s: qcom_mdt_load_no_init: %d\n", __func__, ret);
++		return ret;
++	}
++
++	ret = iommu_map(core->fw.iommu_domain, VENUS_FW_START_ADDR, mem_phys,
++			res_size, IOMMU_READ | IOMMU_WRITE | IOMMU_PRIV, GFP_KERNEL);
++	if (ret) {
++		dev_err(core->dev, "could not map video firmware region\n");
++		return ret;
++	}
++
++	core->fw.mapped_mem_size = res_size;
++	venus_reset_cpu(core);
++	return 0;
++}
++
++static int venus_shutdown_no_tz(struct venus_core *core)
++{
++	const size_t mapped = core->fw.mapped_mem_size;
++	struct iommu_domain *iommu;
++	size_t unmapped;
++	u32 reg;
++	struct device *dev = core->fw.dev;
++	void __iomem *wrapper_base = core->wrapper_base;
++	void __iomem *wrapper_tz_base = core->wrapper_tz_base;
++
++	if (IS_IRIS2(core) || IS_IRIS2_1(core)) {
++		/* Assert the reset to XTSS */
++		reg = readl(wrapper_tz_base + WRAPPER_TZ_XTSS_SW_RESET);
++		reg |= WRAPPER_XTSS_SW_RESET_BIT;
++		writel(reg, wrapper_tz_base + WRAPPER_TZ_XTSS_SW_RESET);
++	} else {
++		/* Assert the reset to ARM9 */
++		reg = readl(wrapper_base + WRAPPER_A9SS_SW_RESET);
++		reg |= WRAPPER_A9SS_SW_RESET_BIT;
++		writel(reg, wrapper_base + WRAPPER_A9SS_SW_RESET);
++	}
++
++	iommu = core->fw.iommu_domain;
++
++	if (core->fw.mapped_mem_size && iommu) {
++		unmapped = iommu_unmap(iommu, VENUS_FW_START_ADDR, mapped);
++
++		if (unmapped != mapped)
++			dev_err(dev, "failed to unmap firmware\n");
++		else
++			core->fw.mapped_mem_size = 0;
++	}
++
++	return 0;
++}
++
++int venus_firmware_cfg(struct venus_core *core)
++{
++	void __iomem *cpu_cs_base = core->cpu_cs_base;
++
++	if (IS_AR50_LITE(core))
++		writel(CPU_CS_VCICMD_ARP_OFF, cpu_cs_base + CPU_CS_VCICMD);
++
++	return 0;
++}
++
++int venus_boot(struct venus_core *core)
++{
++	struct device *dev = core->dev;
++	const struct venus_resources *res = core->res;
++	const struct firmware *mdt;
++	const char *fwpath = NULL;
++	phys_addr_t mem_phys;
++	size_t res_size;
++	int ret;
++
++	if (!IS_ENABLED(CONFIG_QCOM_MDT_LOADER) ||
++	    (!core->use_tz && !core->fw.dev && !qcom_pas_is_available()))
++		return driver_deferred_probe_check_state(core->dev);
++
++	ret = of_property_read_string_index(dev->of_node, "firmware-name", 0, &fwpath);
++	if (ret)
++		fwpath = core->res->fwname;
++
++	ret = venus_load_fw_prepare(core, fwpath, &mem_phys, &res_size, &mdt);
++	if (ret)
++		return ret;
++
++	if (core->use_tz)
++		ret = venus_load_fw(core, mdt, fwpath, mem_phys, res_size);
++	else
++		ret = venus_load_fw_no_tz(core, mdt, fwpath, mem_phys, res_size);
++
++	release_firmware(mdt);
++
++	if (ret) {
++		dev_err(dev, "fail to load video firmware\n");
++		return ret;
++	}
++
++	if (core->use_tz && res->cp_size) {
++		/*
++		 * Clues for porting using downstream data:
++		 * cp_start = 0
++		 * cp_size = venus_ns/virtual-addr-pool[0] - yes, address and not size!
++		 *   This works, as the non-secure context bank is placed
++		 *   contiguously right after the Content Protection region.
++		 *
++		 * cp_nonpixel_start = venus_sec_non_pixel/virtual-addr-pool[0]
++		 * cp_nonpixel_size = venus_sec_non_pixel/virtual-addr-pool[1]
++		 */
++		ret = qcom_scm_mem_protect_video_var(res->cp_start,
++						     res->cp_size,
++						     res->cp_nonpixel_start,
++						     res->cp_nonpixel_size);
++		if (ret) {
++			venus_shutdown(core);
++			dev_err(dev, "set virtual address ranges fail (%d)\n",	ret);
++			return ret;
++		}
++	}
++
++	return ret;
++}
++
++int venus_shutdown(struct venus_core *core)
++{
++	int ret;
++
++	if (core->use_tz) {
++		ret = qcom_pas_shutdown(VENUS_PAS_ID);
++		if (core->fw.iommu_domain && core->fw.mapped_mem_size) {
++			iommu_unmap(core->fw.iommu_domain, 0, core->fw.mapped_mem_size);
++			core->fw.mapped_mem_size = 0;
++		}
++		core->fw.ctx = NULL;
++	} else {
++		ret = venus_shutdown_no_tz(core);
++	}
++
++	return ret;
++}
++
++int venus_firmware_check(struct venus_core *core)
++{
++	const struct firmware_version *req = core->res->min_fw;
++	const struct firmware_version *run = &core->venus_ver;
++
++	if (!req)
++		return 0;
++
++	if (!is_fw_rev_or_newer(core, req->major, req->minor, req->rev))
++		goto error;
++
++	return 0;
++error:
++	dev_err(core->dev, "Firmware v%d.%d.%d < v%d.%d.%d\n",
++		run->major, run->minor, run->rev,
++		req->major, req->minor, req->rev);
++
++	return -EINVAL;
++}
++
++static struct device *venus_firmware_alloc_platform_dev(struct venus_core *core,
++							const char *name, const u32 *f_id)
++{
++	struct platform_device *pdev;
++	int ret;
++
++	pdev = platform_device_alloc(name, 0);
++	if (!pdev) {
++		dev_err(core->dev, "%s: platform_device_alloc err\n", __func__);
++		return ERR_PTR(-ENOMEM);
++	}
++
++	pdev->dev.parent = core->dev;
++
++	ret = platform_device_add(pdev);
++	if (ret) {
++		dev_err(core->dev, "%s: platform_device_add err(%d)\n", __func__, ret);
++		platform_device_put(pdev);
++		return ERR_PTR(ret);
++	}
++
++	ret = of_dma_configure_id(&pdev->dev, core->dev->of_node, true, f_id);
++	if (ret) {
++		dev_err(core->dev, "%s: of_dma_configure_id err(%d)\n", __func__, ret);
++		platform_device_unregister(to_platform_device(&pdev->dev));
++		return ERR_PTR(ret);
++	}
++
++	return &pdev->dev;
++}
++
++static int venus_firmware_setup_iommu_dev(struct venus_core *core)
++{
++	const u32 f_id = VENUS_FIRMWARE;
++	struct device *dev;
++	int ret = 0;
++
++	dev = venus_firmware_alloc_platform_dev(core, "video_firmware", &f_id);
++	if (IS_ERR(dev)) {
++		dev_err(core->dev, "%s: err\n", __func__);
++		return PTR_ERR(dev);
++	}
++
++	if (!device_iommu_mapped(dev)) {
++		device_unregister(dev);
++		return -ENODEV;
++	}
++
++	ret = dma_set_mask_and_coherent(dev, core->res->dma_mask);
++	if (ret) {
++		device_unregister(dev);
++		return ret;
++	}
++
++	core->fw.dev = dev;
++	core->fw.iommu_domain = iommu_get_domain_for_dev(core->fw.dev);
++	core->fw.iommu_domain_owned = false;
++
++	return 0;
++}
++
++static int venus_firmware_init_auto_detect(struct venus_core *core)
++{
++	int ret;
++
++	core->use_tz = false;
++	if (qcom_scm_is_available()) {
++		if (qcom_scm_pas_supported(VENUS_PAS_ID))
++			core->use_tz = true;
++	} else {
++		ret = driver_deferred_probe_check_state(core->dev);
++		if (ret == -EPROBE_DEFER)
++			return ret;
++	}
++
++	/*
++	 * 1. use_tz is false: No authentication is performed.
++	 * 2. use_tz is true: TZ perform authentication.
++	 *    a. device_iommu_mapped true: Linux config smmu
++	 *    b. device_iommu_mapped false: TZ config smmu
++	 */
++	ret = venus_firmware_setup_iommu_dev(core);
++	if (ret == -ENODEV && core->use_tz)
++		ret = 0;
++
++	return ret;
++}
++
++int venus_firmware_init(struct venus_core *core)
++{
++	struct platform_device_info info;
++	struct iommu_domain *iommu_dom;
++	struct platform_device *pdev;
++	struct device_node *np;
++	int ret;
++
++	np = of_get_child_by_name(core->dev->of_node, "video-firmware");
++	if (!np) {
++		ret = venus_firmware_init_auto_detect(core);
++		return ret;
++	}
++
++	memset(&info, 0, sizeof(info));
++	info.fwnode = &np->fwnode;
++	info.parent = core->dev;
++	info.name = np->name;
++	info.dma_mask = DMA_BIT_MASK(32);
++
++	pdev = platform_device_register_full(&info);
++	if (IS_ERR(pdev)) {
++		of_node_put(np);
++		return PTR_ERR(pdev);
++	}
++
++	pdev->dev.of_node = np;
++
++	ret = of_dma_configure(&pdev->dev, np, true);
++	if (ret) {
++		dev_err(core->dev, "dma configure fail\n");
++		goto err_unregister;
++	}
++
++	core->fw.dev = &pdev->dev;
++
++	iommu_dom = iommu_paging_domain_alloc(core->fw.dev);
++	if (IS_ERR(iommu_dom)) {
++		dev_err(core->fw.dev, "Failed to allocate iommu domain\n");
++		ret = PTR_ERR(iommu_dom);
++		goto err_unregister;
++	}
++
++	ret = iommu_attach_device(iommu_dom, core->fw.dev);
++	if (ret) {
++		dev_err(core->fw.dev, "could not attach device\n");
++		goto err_iommu_free;
++	}
++
++	core->fw.iommu_domain = iommu_dom;
++	core->fw.iommu_domain_owned = true;
++
++	of_node_put(np);
++
++	return 0;
++
++err_iommu_free:
++	iommu_domain_free(iommu_dom);
++err_unregister:
++	core->fw.dev = NULL;
++	platform_device_unregister(pdev);
++	of_node_put(np);
++	return ret;
++}
++
++void venus_firmware_deinit(struct venus_core *core)
++{
++	struct iommu_domain *iommu;
++
++	if (!core->fw.dev)
++		return;
++
++	if (!core->use_tz && core->fw.iommu_domain_owned) {
++		iommu = core->fw.iommu_domain;
++
++		if (iommu) {
++			iommu_detach_device(iommu, core->fw.dev);
++			iommu_domain_free(iommu);
++		}
++	}
++	platform_device_unregister(to_platform_device(core->fw.dev));
++	core->fw.dev = NULL;
++	core->fw.ctx = NULL;
++	core->fw.iommu_domain = NULL;
++	core->fw.iommu_domain_owned = false;
++}
+diff --git a/rr-cache/f6310ef252db7727d89a76f4a010b31668ef5719/preimage.1 b/rr-cache/f6310ef252db7727d89a76f4a010b31668ef5719/preimage.1
+new file mode 100644
+index 0000000..75e4b04
+--- /dev/null
++++ b/rr-cache/f6310ef252db7727d89a76f4a010b31668ef5719/preimage.1
+@@ -0,0 +1,555 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (C) 2017 Linaro Ltd.
++ */
++
++#include <linux/device.h>
++#include <linux/firmware.h>
++#include <linux/kernel.h>
++#include <linux/iommu.h>
++#include <linux/io.h>
++#include <linux/of.h>
++#include <linux/of_reserved_mem.h>
++#include <linux/platform_device.h>
++#include <linux/of_device.h>
++#include <linux/firmware/qcom/qcom_pas.h>
++#include <linux/firmware/qcom/qcom_scm.h>
++#include <linux/sizes.h>
++#include <linux/soc/qcom/mdt_loader.h>
++#include <dt-bindings/media/qcom,qcs615-venus.h>
++
++#include "core.h"
++#include "firmware.h"
++#include "hfi_venus_io.h"
++
++#define VENUS_PAS_ID			9
++#define VENUS_FW_MEM_SIZE		(6 * SZ_1M)
++#define VENUS_FW_START_ADDR		0x0
++
++static void venus_reset_cpu(struct venus_core *core)
++{
++	u32 fw_size = core->fw.mapped_mem_size;
++	void __iomem *wrapper_base;
++
++	if (IS_IRIS2(core) || IS_IRIS2_1(core))
++		wrapper_base = core->wrapper_tz_base;
++	else
++		wrapper_base = core->wrapper_base;
++
++	writel(0, wrapper_base + WRAPPER_FW_START_ADDR);
++	writel(fw_size, wrapper_base + WRAPPER_FW_END_ADDR);
++	writel(0, wrapper_base + WRAPPER_CPA_START_ADDR);
++	writel(fw_size, wrapper_base + WRAPPER_CPA_END_ADDR);
++	writel(fw_size, wrapper_base + WRAPPER_NONPIX_START_ADDR);
++	writel(fw_size, wrapper_base + WRAPPER_NONPIX_END_ADDR);
++
++	if (IS_IRIS2(core) || IS_IRIS2_1(core)) {
++		/* Bring XTSS out of reset */
++		writel(0, wrapper_base + WRAPPER_TZ_XTSS_SW_RESET);
++	} else {
++		writel(0x0, wrapper_base + WRAPPER_CPU_CGC_DIS);
++		writel(0x0, wrapper_base + WRAPPER_CPU_CLOCK_CONFIG);
++
++		/* Bring ARM9 out of reset */
++		writel(0, wrapper_base + WRAPPER_A9SS_SW_RESET);
++	}
++}
++
++int venus_set_hw_state(struct venus_core *core, bool resume)
++{
++	int ret;
++
++	if (core->use_tz) {
++		ret = qcom_pas_set_remote_state(resume, VENUS_PAS_ID);
++		if (resume && ret == -EINVAL)
++			ret = 0;
++		return ret;
++	}
++
++	if (resume) {
++		venus_reset_cpu(core);
++	} else {
++		if (IS_IRIS2(core) || IS_IRIS2_1(core))
++			writel(WRAPPER_XTSS_SW_RESET_BIT,
++			       core->wrapper_tz_base + WRAPPER_TZ_XTSS_SW_RESET);
++		else
++			writel(WRAPPER_A9SS_SW_RESET_BIT,
++			       core->wrapper_base + WRAPPER_A9SS_SW_RESET);
++	}
++
++	return 0;
++}
++
++static int venus_load_fw_prepare(struct venus_core *core, const char *fwname,
++				 phys_addr_t *mem_phys, size_t *res_size,
++				 const struct firmware **mdt)
++{
++	struct resource res;
++	ssize_t fw_size;
++	int ret;
++
++	ret = of_reserved_mem_region_to_resource(core->dev->of_node, 0, &res);
++	if (ret) {
++		dev_err(core->dev, "failed to lookup reserved memory-region\n");
++		return -EINVAL;
++	}
++
++	*mem_phys = res.start;
++	*res_size = resource_size(&res);
++
++	ret = request_firmware(mdt, fwname, core->dev);
++	if (ret < 0) {
++		dev_err(core->dev, "%s: request_firmware: %d\n", __func__, ret);
++		return ret;
++	}
++
++	fw_size = qcom_mdt_get_size(*mdt);
++	if (fw_size < 0) {
++		ret = fw_size;
++		goto err_release;
++	}
++
++	if (*res_size < fw_size || fw_size > VENUS_FW_MEM_SIZE) {
++		ret = -EINVAL;
++		goto err_release;
++	}
++
++	return 0;
++
++err_release:
++	release_firmware(*mdt);
++	return ret;
++}
++
++static int venus_load_fw(struct venus_core *core,
++			 const struct firmware *mdt, const char *fwname,
++			 phys_addr_t mem_phys, size_t res_size)
++{
++	struct qcom_scm_pas_context *ctx;
++	struct device *dev;
++	int ret;
++
++	dev = core->fw.dev ? core->fw.dev : core->dev;
++	ctx = devm_qcom_scm_pas_context_alloc(dev, VENUS_PAS_ID, mem_phys, res_size);
++	if (!ctx) {
++		dev_err(core->dev, "%s: ctx is null\n", __func__);
++		return -ENOMEM;
++	}
++
++	ctx->use_tzmem = !!core->fw.dev;
++
++	ret = qcom_mdt_pas_load(ctx, mdt, fwname, NULL);
++	qcom_scm_pas_metadata_release(ctx);
++	if (ret) {
++		dev_err(core->dev, "%s: qcom_mdt_pas_load: %d\n", __func__, ret);
++		return ret;
++	}
++
++	if (core->fw.iommu_domain) {
++		ret = iommu_map(core->fw.iommu_domain, 0, mem_phys, res_size,
++				IOMMU_READ | IOMMU_WRITE | IOMMU_PRIV, GFP_KERNEL);
++		if (ret) {
++			dev_err(core->dev, "%s: iommu_map: %d\n", __func__, ret);
++			return ret;
++		}
++	}
++
++	core->fw.mapped_mem_size = res_size;
++
++	ret = qcom_scm_pas_prepare_and_auth_reset(ctx);
++	if (ret) {
++		dev_err(core->dev, "%s: qcom_scm_pas_prepare_and_auth_reset: %d\n", __func__, ret);
++		if (core->fw.iommu_domain)
++			iommu_unmap(core->fw.iommu_domain, 0, res_size);
++		core->fw.mapped_mem_size = 0;
++		return ret;
++	}
++
++	core->fw.ctx = ctx;
++	return 0;
++}
++
++static int venus_load_fw_no_tz(struct venus_core *core,
++			       const struct firmware *mdt, const char *fwname,
++			       phys_addr_t mem_phys, size_t res_size)
++{
++	void *mem_va;
++	int ret;
++
++	mem_va = memremap(mem_phys, res_size, MEMREMAP_WC);
++	if (!mem_va) {
++		dev_err(core->dev,
++			"unable to map memory region %pa size %#zx\n", &mem_phys, res_size);
++		return -ENOMEM;
++	}
++
++	ret = qcom_mdt_load_no_init(core->fw.dev, mdt, fwname, mem_va, mem_phys, res_size, NULL);
++	memunmap(mem_va);
++	if (ret) {
++		dev_err(core->dev, "%s: qcom_mdt_load_no_init: %d\n", __func__, ret);
++		return ret;
++	}
++
++	ret = iommu_map(core->fw.iommu_domain, VENUS_FW_START_ADDR, mem_phys,
++			res_size, IOMMU_READ | IOMMU_WRITE | IOMMU_PRIV, GFP_KERNEL);
++	if (ret) {
++		dev_err(core->dev, "could not map video firmware region\n");
++		return ret;
++	}
++
++	core->fw.mapped_mem_size = res_size;
++	venus_reset_cpu(core);
++	return 0;
++}
++
++static int venus_shutdown_no_tz(struct venus_core *core)
++{
++	const size_t mapped = core->fw.mapped_mem_size;
++	struct iommu_domain *iommu;
++	size_t unmapped;
++	u32 reg;
++	struct device *dev = core->fw.dev;
++	void __iomem *wrapper_base = core->wrapper_base;
++	void __iomem *wrapper_tz_base = core->wrapper_tz_base;
++
++	if (IS_IRIS2(core) || IS_IRIS2_1(core)) {
++		/* Assert the reset to XTSS */
++		reg = readl(wrapper_tz_base + WRAPPER_TZ_XTSS_SW_RESET);
++		reg |= WRAPPER_XTSS_SW_RESET_BIT;
++		writel(reg, wrapper_tz_base + WRAPPER_TZ_XTSS_SW_RESET);
++	} else {
++		/* Assert the reset to ARM9 */
++		reg = readl(wrapper_base + WRAPPER_A9SS_SW_RESET);
++		reg |= WRAPPER_A9SS_SW_RESET_BIT;
++		writel(reg, wrapper_base + WRAPPER_A9SS_SW_RESET);
++	}
++
++	iommu = core->fw.iommu_domain;
++
++	if (core->fw.mapped_mem_size && iommu) {
++		unmapped = iommu_unmap(iommu, VENUS_FW_START_ADDR, mapped);
++
++		if (unmapped != mapped)
++			dev_err(dev, "failed to unmap firmware\n");
++		else
++			core->fw.mapped_mem_size = 0;
++	}
++
++	return 0;
++}
++
++int venus_firmware_cfg(struct venus_core *core)
++{
++	void __iomem *cpu_cs_base = core->cpu_cs_base;
++
++	if (IS_AR50_LITE(core))
++		writel(CPU_CS_VCICMD_ARP_OFF, cpu_cs_base + CPU_CS_VCICMD);
++
++	return 0;
++}
++
++int venus_boot(struct venus_core *core)
++{
++	struct device *dev = core->dev;
++	const struct venus_resources *res = core->res;
++	const struct firmware *mdt;
++	const char *fwpath = NULL;
++	phys_addr_t mem_phys;
++	size_t res_size;
++	int ret;
++
++	if (!IS_ENABLED(CONFIG_QCOM_MDT_LOADER) ||
++<<<<<<<
++	    (!core->use_tz && !core->fw.dev))
++		return driver_deferred_probe_check_state(core->dev);
++=======
++	    (core->use_tz && !qcom_pas_is_available()))
++		return -EPROBE_DEFER;
++>>>>>>>
++
++	ret = of_property_read_string_index(dev->of_node, "firmware-name", 0, &fwpath);
++	if (ret)
++		fwpath = core->res->fwname;
++
++<<<<<<<
++	ret = venus_load_fw(core, fwpath, &mem_phys, &mem_size);
++	if (ret) {
++		dev_err(dev, "fail to load video firmware\n");
++		return -EINVAL;
++	}
++
++	core->fw.mem_size = mem_size;
++	core->fw.mem_phys = mem_phys;
++
++	if (core->use_tz)
++		ret = qcom_pas_auth_and_reset(VENUS_PAS_ID);
++	else
++		ret = venus_boot_no_tz(core, mem_phys, mem_size);
++
++=======
++	ret = venus_load_fw_prepare(core, fwpath, &mem_phys, &res_size, &mdt);
++>>>>>>>
++	if (ret)
++		return ret;
++
++	if (core->use_tz)
++		ret = venus_load_fw(core, mdt, fwpath, mem_phys, res_size);
++	else
++		ret = venus_load_fw_no_tz(core, mdt, fwpath, mem_phys, res_size);
++
++	release_firmware(mdt);
++
++	if (ret) {
++		dev_err(dev, "fail to load video firmware\n");
++		return ret;
++	}
++
++	if (core->use_tz && res->cp_size) {
++		/*
++		 * Clues for porting using downstream data:
++		 * cp_start = 0
++		 * cp_size = venus_ns/virtual-addr-pool[0] - yes, address and not size!
++		 *   This works, as the non-secure context bank is placed
++		 *   contiguously right after the Content Protection region.
++		 *
++		 * cp_nonpixel_start = venus_sec_non_pixel/virtual-addr-pool[0]
++		 * cp_nonpixel_size = venus_sec_non_pixel/virtual-addr-pool[1]
++		 */
++		ret = qcom_scm_mem_protect_video_var(res->cp_start,
++						     res->cp_size,
++						     res->cp_nonpixel_start,
++						     res->cp_nonpixel_size);
++		if (ret) {
++<<<<<<<
++			qcom_pas_shutdown(VENUS_PAS_ID);
++			dev_err(dev, "set virtual address ranges fail (%d)\n",
++				ret);
++=======
++			venus_shutdown(core);
++			dev_err(dev, "set virtual address ranges fail (%d)\n",	ret);
++>>>>>>>
++			return ret;
++		}
++	}
++
++	return ret;
++}
++
++int venus_shutdown(struct venus_core *core)
++{
++	int ret;
++
++<<<<<<<
++	if (core->use_tz)
++		ret = qcom_pas_shutdown(VENUS_PAS_ID);
++	else
++=======
++	if (core->use_tz) {
++		ret = qcom_scm_pas_shutdown(VENUS_PAS_ID);
++		if (core->fw.iommu_domain && core->fw.mapped_mem_size) {
++			iommu_unmap(core->fw.iommu_domain, 0, core->fw.mapped_mem_size);
++			core->fw.mapped_mem_size = 0;
++		}
++		core->fw.ctx = NULL;
++	} else {
++>>>>>>>
++		ret = venus_shutdown_no_tz(core);
++	}
++
++	return ret;
++}
++
++int venus_firmware_check(struct venus_core *core)
++{
++	const struct firmware_version *req = core->res->min_fw;
++	const struct firmware_version *run = &core->venus_ver;
++
++	if (!req)
++		return 0;
++
++	if (!is_fw_rev_or_newer(core, req->major, req->minor, req->rev))
++		goto error;
++
++	return 0;
++error:
++	dev_err(core->dev, "Firmware v%d.%d.%d < v%d.%d.%d\n",
++		run->major, run->minor, run->rev,
++		req->major, req->minor, req->rev);
++
++	return -EINVAL;
++}
++
++static struct device *venus_firmware_alloc_platform_dev(struct venus_core *core,
++							const char *name, const u32 *f_id)
++{
++	struct platform_device *pdev;
++	int ret;
++
++	pdev = platform_device_alloc(name, 0);
++	if (!pdev) {
++		dev_err(core->dev, "%s: platform_device_alloc err\n", __func__);
++		return ERR_PTR(-ENOMEM);
++	}
++
++	pdev->dev.parent = core->dev;
++
++	ret = platform_device_add(pdev);
++	if (ret) {
++		dev_err(core->dev, "%s: platform_device_add err(%d)\n", __func__, ret);
++		platform_device_put(pdev);
++		return ERR_PTR(ret);
++	}
++
++	ret = of_dma_configure_id(&pdev->dev, core->dev->of_node, true, f_id);
++	if (ret) {
++		dev_err(core->dev, "%s: of_dma_configure_id err(%d)\n", __func__, ret);
++		platform_device_unregister(to_platform_device(&pdev->dev));
++		return ERR_PTR(ret);
++	}
++
++	return &pdev->dev;
++}
++
++static int venus_firmware_setup_iommu_dev(struct venus_core *core)
++{
++	const u32 f_id = VENUS_FIRMWARE;
++	struct device *dev;
++	int ret = 0;
++
++	dev = venus_firmware_alloc_platform_dev(core, "video_firmware", &f_id);
++	if (IS_ERR(dev)) {
++		dev_err(core->dev, "%s: err\n", __func__);
++		return PTR_ERR(dev);
++	}
++
++	if (!device_iommu_mapped(dev)) {
++		device_unregister(dev);
++		return -ENODEV;
++	}
++
++	ret = dma_set_mask_and_coherent(dev, core->res->dma_mask);
++	if (ret) {
++		device_unregister(dev);
++		return ret;
++	}
++
++	core->fw.dev = dev;
++	core->fw.iommu_domain = iommu_get_domain_for_dev(core->fw.dev);
++	core->fw.iommu_domain_owned = false;
++
++	return 0;
++}
++
++static int venus_firmware_init_auto_detect(struct venus_core *core)
++{
++	int ret;
++
++	core->use_tz = false;
++	if (qcom_scm_is_available()) {
++		if (qcom_scm_pas_supported(VENUS_PAS_ID))
++			core->use_tz = true;
++	} else {
++		ret = driver_deferred_probe_check_state(core->dev);
++		if (ret == -EPROBE_DEFER)
++			return ret;
++	}
++
++	/*
++	 * 1. use_tz is false: No authentication is performed.
++	 * 2. use_tz is true: TZ perform authentication.
++	 *    a. device_iommu_mapped true: Linux config smmu
++	 *    b. device_iommu_mapped false: TZ config smmu
++	 */
++	ret = venus_firmware_setup_iommu_dev(core);
++	if (ret == -ENODEV && core->use_tz)
++		ret = 0;
++
++	return ret;
++}
++
++int venus_firmware_init(struct venus_core *core)
++{
++	struct platform_device_info info;
++	struct iommu_domain *iommu_dom;
++	struct platform_device *pdev;
++	struct device_node *np;
++	int ret;
++
++	np = of_get_child_by_name(core->dev->of_node, "video-firmware");
++	if (!np) {
++		ret = venus_firmware_init_auto_detect(core);
++		return ret;
++	}
++
++	memset(&info, 0, sizeof(info));
++	info.fwnode = &np->fwnode;
++	info.parent = core->dev;
++	info.name = np->name;
++	info.dma_mask = DMA_BIT_MASK(32);
++
++	pdev = platform_device_register_full(&info);
++	if (IS_ERR(pdev)) {
++		of_node_put(np);
++		return PTR_ERR(pdev);
++	}
++
++	pdev->dev.of_node = np;
++
++	ret = of_dma_configure(&pdev->dev, np, true);
++	if (ret) {
++		dev_err(core->dev, "dma configure fail\n");
++		goto err_unregister;
++	}
++
++	core->fw.dev = &pdev->dev;
++
++	iommu_dom = iommu_paging_domain_alloc(core->fw.dev);
++	if (IS_ERR(iommu_dom)) {
++		dev_err(core->fw.dev, "Failed to allocate iommu domain\n");
++		ret = PTR_ERR(iommu_dom);
++		goto err_unregister;
++	}
++
++	ret = iommu_attach_device(iommu_dom, core->fw.dev);
++	if (ret) {
++		dev_err(core->fw.dev, "could not attach device\n");
++		goto err_iommu_free;
++	}
++
++	core->fw.iommu_domain = iommu_dom;
++	core->fw.iommu_domain_owned = true;
++
++	of_node_put(np);
++
++	return 0;
++
++err_iommu_free:
++	iommu_domain_free(iommu_dom);
++err_unregister:
++	core->fw.dev = NULL;
++	platform_device_unregister(pdev);
++	of_node_put(np);
++	return ret;
++}
++
++void venus_firmware_deinit(struct venus_core *core)
++{
++	struct iommu_domain *iommu;
++
++	if (!core->fw.dev)
++		return;
++
++	if (!core->use_tz && core->fw.iommu_domain_owned) {
++		iommu = core->fw.iommu_domain;
++
++		if (iommu) {
++			iommu_detach_device(iommu, core->fw.dev);
++			iommu_domain_free(iommu);
++		}
++	}
++	platform_device_unregister(to_platform_device(core->fw.dev));
++	core->fw.dev = NULL;
++	core->fw.ctx = NULL;
++	core->fw.iommu_domain = NULL;
++	core->fw.iommu_domain_owned = false;
++}
+diff --git a/rr-cache/f6310ef252db7727d89a76f4a010b31668ef5719/preimage.2 b/rr-cache/f6310ef252db7727d89a76f4a010b31668ef5719/preimage.2
+new file mode 100644
+index 0000000..75e4b04
+--- /dev/null
++++ b/rr-cache/f6310ef252db7727d89a76f4a010b31668ef5719/preimage.2
+@@ -0,0 +1,555 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (C) 2017 Linaro Ltd.
++ */
++
++#include <linux/device.h>
++#include <linux/firmware.h>
++#include <linux/kernel.h>
++#include <linux/iommu.h>
++#include <linux/io.h>
++#include <linux/of.h>
++#include <linux/of_reserved_mem.h>
++#include <linux/platform_device.h>
++#include <linux/of_device.h>
++#include <linux/firmware/qcom/qcom_pas.h>
++#include <linux/firmware/qcom/qcom_scm.h>
++#include <linux/sizes.h>
++#include <linux/soc/qcom/mdt_loader.h>
++#include <dt-bindings/media/qcom,qcs615-venus.h>
++
++#include "core.h"
++#include "firmware.h"
++#include "hfi_venus_io.h"
++
++#define VENUS_PAS_ID			9
++#define VENUS_FW_MEM_SIZE		(6 * SZ_1M)
++#define VENUS_FW_START_ADDR		0x0
++
++static void venus_reset_cpu(struct venus_core *core)
++{
++	u32 fw_size = core->fw.mapped_mem_size;
++	void __iomem *wrapper_base;
++
++	if (IS_IRIS2(core) || IS_IRIS2_1(core))
++		wrapper_base = core->wrapper_tz_base;
++	else
++		wrapper_base = core->wrapper_base;
++
++	writel(0, wrapper_base + WRAPPER_FW_START_ADDR);
++	writel(fw_size, wrapper_base + WRAPPER_FW_END_ADDR);
++	writel(0, wrapper_base + WRAPPER_CPA_START_ADDR);
++	writel(fw_size, wrapper_base + WRAPPER_CPA_END_ADDR);
++	writel(fw_size, wrapper_base + WRAPPER_NONPIX_START_ADDR);
++	writel(fw_size, wrapper_base + WRAPPER_NONPIX_END_ADDR);
++
++	if (IS_IRIS2(core) || IS_IRIS2_1(core)) {
++		/* Bring XTSS out of reset */
++		writel(0, wrapper_base + WRAPPER_TZ_XTSS_SW_RESET);
++	} else {
++		writel(0x0, wrapper_base + WRAPPER_CPU_CGC_DIS);
++		writel(0x0, wrapper_base + WRAPPER_CPU_CLOCK_CONFIG);
++
++		/* Bring ARM9 out of reset */
++		writel(0, wrapper_base + WRAPPER_A9SS_SW_RESET);
++	}
++}
++
++int venus_set_hw_state(struct venus_core *core, bool resume)
++{
++	int ret;
++
++	if (core->use_tz) {
++		ret = qcom_pas_set_remote_state(resume, VENUS_PAS_ID);
++		if (resume && ret == -EINVAL)
++			ret = 0;
++		return ret;
++	}
++
++	if (resume) {
++		venus_reset_cpu(core);
++	} else {
++		if (IS_IRIS2(core) || IS_IRIS2_1(core))
++			writel(WRAPPER_XTSS_SW_RESET_BIT,
++			       core->wrapper_tz_base + WRAPPER_TZ_XTSS_SW_RESET);
++		else
++			writel(WRAPPER_A9SS_SW_RESET_BIT,
++			       core->wrapper_base + WRAPPER_A9SS_SW_RESET);
++	}
++
++	return 0;
++}
++
++static int venus_load_fw_prepare(struct venus_core *core, const char *fwname,
++				 phys_addr_t *mem_phys, size_t *res_size,
++				 const struct firmware **mdt)
++{
++	struct resource res;
++	ssize_t fw_size;
++	int ret;
++
++	ret = of_reserved_mem_region_to_resource(core->dev->of_node, 0, &res);
++	if (ret) {
++		dev_err(core->dev, "failed to lookup reserved memory-region\n");
++		return -EINVAL;
++	}
++
++	*mem_phys = res.start;
++	*res_size = resource_size(&res);
++
++	ret = request_firmware(mdt, fwname, core->dev);
++	if (ret < 0) {
++		dev_err(core->dev, "%s: request_firmware: %d\n", __func__, ret);
++		return ret;
++	}
++
++	fw_size = qcom_mdt_get_size(*mdt);
++	if (fw_size < 0) {
++		ret = fw_size;
++		goto err_release;
++	}
++
++	if (*res_size < fw_size || fw_size > VENUS_FW_MEM_SIZE) {
++		ret = -EINVAL;
++		goto err_release;
++	}
++
++	return 0;
++
++err_release:
++	release_firmware(*mdt);
++	return ret;
++}
++
++static int venus_load_fw(struct venus_core *core,
++			 const struct firmware *mdt, const char *fwname,
++			 phys_addr_t mem_phys, size_t res_size)
++{
++	struct qcom_scm_pas_context *ctx;
++	struct device *dev;
++	int ret;
++
++	dev = core->fw.dev ? core->fw.dev : core->dev;
++	ctx = devm_qcom_scm_pas_context_alloc(dev, VENUS_PAS_ID, mem_phys, res_size);
++	if (!ctx) {
++		dev_err(core->dev, "%s: ctx is null\n", __func__);
++		return -ENOMEM;
++	}
++
++	ctx->use_tzmem = !!core->fw.dev;
++
++	ret = qcom_mdt_pas_load(ctx, mdt, fwname, NULL);
++	qcom_scm_pas_metadata_release(ctx);
++	if (ret) {
++		dev_err(core->dev, "%s: qcom_mdt_pas_load: %d\n", __func__, ret);
++		return ret;
++	}
++
++	if (core->fw.iommu_domain) {
++		ret = iommu_map(core->fw.iommu_domain, 0, mem_phys, res_size,
++				IOMMU_READ | IOMMU_WRITE | IOMMU_PRIV, GFP_KERNEL);
++		if (ret) {
++			dev_err(core->dev, "%s: iommu_map: %d\n", __func__, ret);
++			return ret;
++		}
++	}
++
++	core->fw.mapped_mem_size = res_size;
++
++	ret = qcom_scm_pas_prepare_and_auth_reset(ctx);
++	if (ret) {
++		dev_err(core->dev, "%s: qcom_scm_pas_prepare_and_auth_reset: %d\n", __func__, ret);
++		if (core->fw.iommu_domain)
++			iommu_unmap(core->fw.iommu_domain, 0, res_size);
++		core->fw.mapped_mem_size = 0;
++		return ret;
++	}
++
++	core->fw.ctx = ctx;
++	return 0;
++}
++
++static int venus_load_fw_no_tz(struct venus_core *core,
++			       const struct firmware *mdt, const char *fwname,
++			       phys_addr_t mem_phys, size_t res_size)
++{
++	void *mem_va;
++	int ret;
++
++	mem_va = memremap(mem_phys, res_size, MEMREMAP_WC);
++	if (!mem_va) {
++		dev_err(core->dev,
++			"unable to map memory region %pa size %#zx\n", &mem_phys, res_size);
++		return -ENOMEM;
++	}
++
++	ret = qcom_mdt_load_no_init(core->fw.dev, mdt, fwname, mem_va, mem_phys, res_size, NULL);
++	memunmap(mem_va);
++	if (ret) {
++		dev_err(core->dev, "%s: qcom_mdt_load_no_init: %d\n", __func__, ret);
++		return ret;
++	}
++
++	ret = iommu_map(core->fw.iommu_domain, VENUS_FW_START_ADDR, mem_phys,
++			res_size, IOMMU_READ | IOMMU_WRITE | IOMMU_PRIV, GFP_KERNEL);
++	if (ret) {
++		dev_err(core->dev, "could not map video firmware region\n");
++		return ret;
++	}
++
++	core->fw.mapped_mem_size = res_size;
++	venus_reset_cpu(core);
++	return 0;
++}
++
++static int venus_shutdown_no_tz(struct venus_core *core)
++{
++	const size_t mapped = core->fw.mapped_mem_size;
++	struct iommu_domain *iommu;
++	size_t unmapped;
++	u32 reg;
++	struct device *dev = core->fw.dev;
++	void __iomem *wrapper_base = core->wrapper_base;
++	void __iomem *wrapper_tz_base = core->wrapper_tz_base;
++
++	if (IS_IRIS2(core) || IS_IRIS2_1(core)) {
++		/* Assert the reset to XTSS */
++		reg = readl(wrapper_tz_base + WRAPPER_TZ_XTSS_SW_RESET);
++		reg |= WRAPPER_XTSS_SW_RESET_BIT;
++		writel(reg, wrapper_tz_base + WRAPPER_TZ_XTSS_SW_RESET);
++	} else {
++		/* Assert the reset to ARM9 */
++		reg = readl(wrapper_base + WRAPPER_A9SS_SW_RESET);
++		reg |= WRAPPER_A9SS_SW_RESET_BIT;
++		writel(reg, wrapper_base + WRAPPER_A9SS_SW_RESET);
++	}
++
++	iommu = core->fw.iommu_domain;
++
++	if (core->fw.mapped_mem_size && iommu) {
++		unmapped = iommu_unmap(iommu, VENUS_FW_START_ADDR, mapped);
++
++		if (unmapped != mapped)
++			dev_err(dev, "failed to unmap firmware\n");
++		else
++			core->fw.mapped_mem_size = 0;
++	}
++
++	return 0;
++}
++
++int venus_firmware_cfg(struct venus_core *core)
++{
++	void __iomem *cpu_cs_base = core->cpu_cs_base;
++
++	if (IS_AR50_LITE(core))
++		writel(CPU_CS_VCICMD_ARP_OFF, cpu_cs_base + CPU_CS_VCICMD);
++
++	return 0;
++}
++
++int venus_boot(struct venus_core *core)
++{
++	struct device *dev = core->dev;
++	const struct venus_resources *res = core->res;
++	const struct firmware *mdt;
++	const char *fwpath = NULL;
++	phys_addr_t mem_phys;
++	size_t res_size;
++	int ret;
++
++	if (!IS_ENABLED(CONFIG_QCOM_MDT_LOADER) ||
++<<<<<<<
++	    (!core->use_tz && !core->fw.dev))
++		return driver_deferred_probe_check_state(core->dev);
++=======
++	    (core->use_tz && !qcom_pas_is_available()))
++		return -EPROBE_DEFER;
++>>>>>>>
++
++	ret = of_property_read_string_index(dev->of_node, "firmware-name", 0, &fwpath);
++	if (ret)
++		fwpath = core->res->fwname;
++
++<<<<<<<
++	ret = venus_load_fw(core, fwpath, &mem_phys, &mem_size);
++	if (ret) {
++		dev_err(dev, "fail to load video firmware\n");
++		return -EINVAL;
++	}
++
++	core->fw.mem_size = mem_size;
++	core->fw.mem_phys = mem_phys;
++
++	if (core->use_tz)
++		ret = qcom_pas_auth_and_reset(VENUS_PAS_ID);
++	else
++		ret = venus_boot_no_tz(core, mem_phys, mem_size);
++
++=======
++	ret = venus_load_fw_prepare(core, fwpath, &mem_phys, &res_size, &mdt);
++>>>>>>>
++	if (ret)
++		return ret;
++
++	if (core->use_tz)
++		ret = venus_load_fw(core, mdt, fwpath, mem_phys, res_size);
++	else
++		ret = venus_load_fw_no_tz(core, mdt, fwpath, mem_phys, res_size);
++
++	release_firmware(mdt);
++
++	if (ret) {
++		dev_err(dev, "fail to load video firmware\n");
++		return ret;
++	}
++
++	if (core->use_tz && res->cp_size) {
++		/*
++		 * Clues for porting using downstream data:
++		 * cp_start = 0
++		 * cp_size = venus_ns/virtual-addr-pool[0] - yes, address and not size!
++		 *   This works, as the non-secure context bank is placed
++		 *   contiguously right after the Content Protection region.
++		 *
++		 * cp_nonpixel_start = venus_sec_non_pixel/virtual-addr-pool[0]
++		 * cp_nonpixel_size = venus_sec_non_pixel/virtual-addr-pool[1]
++		 */
++		ret = qcom_scm_mem_protect_video_var(res->cp_start,
++						     res->cp_size,
++						     res->cp_nonpixel_start,
++						     res->cp_nonpixel_size);
++		if (ret) {
++<<<<<<<
++			qcom_pas_shutdown(VENUS_PAS_ID);
++			dev_err(dev, "set virtual address ranges fail (%d)\n",
++				ret);
++=======
++			venus_shutdown(core);
++			dev_err(dev, "set virtual address ranges fail (%d)\n",	ret);
++>>>>>>>
++			return ret;
++		}
++	}
++
++	return ret;
++}
++
++int venus_shutdown(struct venus_core *core)
++{
++	int ret;
++
++<<<<<<<
++	if (core->use_tz)
++		ret = qcom_pas_shutdown(VENUS_PAS_ID);
++	else
++=======
++	if (core->use_tz) {
++		ret = qcom_scm_pas_shutdown(VENUS_PAS_ID);
++		if (core->fw.iommu_domain && core->fw.mapped_mem_size) {
++			iommu_unmap(core->fw.iommu_domain, 0, core->fw.mapped_mem_size);
++			core->fw.mapped_mem_size = 0;
++		}
++		core->fw.ctx = NULL;
++	} else {
++>>>>>>>
++		ret = venus_shutdown_no_tz(core);
++	}
++
++	return ret;
++}
++
++int venus_firmware_check(struct venus_core *core)
++{
++	const struct firmware_version *req = core->res->min_fw;
++	const struct firmware_version *run = &core->venus_ver;
++
++	if (!req)
++		return 0;
++
++	if (!is_fw_rev_or_newer(core, req->major, req->minor, req->rev))
++		goto error;
++
++	return 0;
++error:
++	dev_err(core->dev, "Firmware v%d.%d.%d < v%d.%d.%d\n",
++		run->major, run->minor, run->rev,
++		req->major, req->minor, req->rev);
++
++	return -EINVAL;
++}
++
++static struct device *venus_firmware_alloc_platform_dev(struct venus_core *core,
++							const char *name, const u32 *f_id)
++{
++	struct platform_device *pdev;
++	int ret;
++
++	pdev = platform_device_alloc(name, 0);
++	if (!pdev) {
++		dev_err(core->dev, "%s: platform_device_alloc err\n", __func__);
++		return ERR_PTR(-ENOMEM);
++	}
++
++	pdev->dev.parent = core->dev;
++
++	ret = platform_device_add(pdev);
++	if (ret) {
++		dev_err(core->dev, "%s: platform_device_add err(%d)\n", __func__, ret);
++		platform_device_put(pdev);
++		return ERR_PTR(ret);
++	}
++
++	ret = of_dma_configure_id(&pdev->dev, core->dev->of_node, true, f_id);
++	if (ret) {
++		dev_err(core->dev, "%s: of_dma_configure_id err(%d)\n", __func__, ret);
++		platform_device_unregister(to_platform_device(&pdev->dev));
++		return ERR_PTR(ret);
++	}
++
++	return &pdev->dev;
++}
++
++static int venus_firmware_setup_iommu_dev(struct venus_core *core)
++{
++	const u32 f_id = VENUS_FIRMWARE;
++	struct device *dev;
++	int ret = 0;
++
++	dev = venus_firmware_alloc_platform_dev(core, "video_firmware", &f_id);
++	if (IS_ERR(dev)) {
++		dev_err(core->dev, "%s: err\n", __func__);
++		return PTR_ERR(dev);
++	}
++
++	if (!device_iommu_mapped(dev)) {
++		device_unregister(dev);
++		return -ENODEV;
++	}
++
++	ret = dma_set_mask_and_coherent(dev, core->res->dma_mask);
++	if (ret) {
++		device_unregister(dev);
++		return ret;
++	}
++
++	core->fw.dev = dev;
++	core->fw.iommu_domain = iommu_get_domain_for_dev(core->fw.dev);
++	core->fw.iommu_domain_owned = false;
++
++	return 0;
++}
++
++static int venus_firmware_init_auto_detect(struct venus_core *core)
++{
++	int ret;
++
++	core->use_tz = false;
++	if (qcom_scm_is_available()) {
++		if (qcom_scm_pas_supported(VENUS_PAS_ID))
++			core->use_tz = true;
++	} else {
++		ret = driver_deferred_probe_check_state(core->dev);
++		if (ret == -EPROBE_DEFER)
++			return ret;
++	}
++
++	/*
++	 * 1. use_tz is false: No authentication is performed.
++	 * 2. use_tz is true: TZ perform authentication.
++	 *    a. device_iommu_mapped true: Linux config smmu
++	 *    b. device_iommu_mapped false: TZ config smmu
++	 */
++	ret = venus_firmware_setup_iommu_dev(core);
++	if (ret == -ENODEV && core->use_tz)
++		ret = 0;
++
++	return ret;
++}
++
++int venus_firmware_init(struct venus_core *core)
++{
++	struct platform_device_info info;
++	struct iommu_domain *iommu_dom;
++	struct platform_device *pdev;
++	struct device_node *np;
++	int ret;
++
++	np = of_get_child_by_name(core->dev->of_node, "video-firmware");
++	if (!np) {
++		ret = venus_firmware_init_auto_detect(core);
++		return ret;
++	}
++
++	memset(&info, 0, sizeof(info));
++	info.fwnode = &np->fwnode;
++	info.parent = core->dev;
++	info.name = np->name;
++	info.dma_mask = DMA_BIT_MASK(32);
++
++	pdev = platform_device_register_full(&info);
++	if (IS_ERR(pdev)) {
++		of_node_put(np);
++		return PTR_ERR(pdev);
++	}
++
++	pdev->dev.of_node = np;
++
++	ret = of_dma_configure(&pdev->dev, np, true);
++	if (ret) {
++		dev_err(core->dev, "dma configure fail\n");
++		goto err_unregister;
++	}
++
++	core->fw.dev = &pdev->dev;
++
++	iommu_dom = iommu_paging_domain_alloc(core->fw.dev);
++	if (IS_ERR(iommu_dom)) {
++		dev_err(core->fw.dev, "Failed to allocate iommu domain\n");
++		ret = PTR_ERR(iommu_dom);
++		goto err_unregister;
++	}
++
++	ret = iommu_attach_device(iommu_dom, core->fw.dev);
++	if (ret) {
++		dev_err(core->fw.dev, "could not attach device\n");
++		goto err_iommu_free;
++	}
++
++	core->fw.iommu_domain = iommu_dom;
++	core->fw.iommu_domain_owned = true;
++
++	of_node_put(np);
++
++	return 0;
++
++err_iommu_free:
++	iommu_domain_free(iommu_dom);
++err_unregister:
++	core->fw.dev = NULL;
++	platform_device_unregister(pdev);
++	of_node_put(np);
++	return ret;
++}
++
++void venus_firmware_deinit(struct venus_core *core)
++{
++	struct iommu_domain *iommu;
++
++	if (!core->fw.dev)
++		return;
++
++	if (!core->use_tz && core->fw.iommu_domain_owned) {
++		iommu = core->fw.iommu_domain;
++
++		if (iommu) {
++			iommu_detach_device(iommu, core->fw.dev);
++			iommu_domain_free(iommu);
++		}
++	}
++	platform_device_unregister(to_platform_device(core->fw.dev));
++	core->fw.dev = NULL;
++	core->fw.ctx = NULL;
++	core->fw.iommu_domain = NULL;
++	core->fw.iommu_domain_owned = false;
++}
+-- 
+2.34.1
+
