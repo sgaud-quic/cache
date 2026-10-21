@@ -1,0 +1,144 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# For a description of the syntax of this configuration file,
+# see Documentation/kbuild/kconfig-language.rst.
+#
+
+menu "Qualcomm firmware drivers"
+
+config QCOM_PAS
+	tristate "Qualcomm generic PAS interface driver"
+	help
+	  Enable the generic Peripheral Authentication Service (PAS) provided
+	  by the firmware. It acts as the common layer with different TZ
+	  backends plugged in whether it's an SCM implementation or a proper
+	  TEE bus based PAS service implementation.
+
+config QCOM_PAS_TEE
+	tristate "Qualcomm PAS TEE interface driver"
+	select QCOM_PAS
+	depends on TEE
+	depends on !CPU_BIG_ENDIAN
+	default m if ARCH_QCOM
+	help
+	  Enable the generic Peripheral Authentication Service (PAS) provided
+	  by the firmware TEE implementation as the backend.
+
+config QCOM_SCM
+	tristate "Qualcomm PAS SCM interface driver"
+	select QCOM_PAS
+	select QCOM_TZMEM
+	default y if ARCH_QCOM
+
+config QCOM_TZMEM
+	tristate
+	select GENERIC_ALLOCATOR
+
+choice
+	prompt "TrustZone interface memory allocator mode"
+	depends on QCOM_TZMEM
+	default QCOM_TZMEM_MODE_GENERIC
+	help
+	  Selects the mode of the memory allocator providing memory buffers of
+	  suitable format for sharing with the TrustZone. If in doubt, select
+	  'Generic'.
+
+config QCOM_TZMEM_MODE_GENERIC
+	bool "Generic"
+	help
+	  Use the generic allocator mode. The memory is page-aligned, non-cachable
+	  and physically contiguous.
+
+config QCOM_TZMEM_MODE_SHMBRIDGE
+	bool "SHM Bridge"
+	help
+	  Use Qualcomm Shared Memory Bridge. The memory has the same alignment as
+	  in the 'Generic' allocator but is also explicitly marked as an SHM Bridge
+	  buffer.
+
+	  With this selected, all buffers passed to the TrustZone must be allocated
+	  using the TZMem allocator or else the TrustZone will refuse to use them.
+
+endchoice
+
+config QCOM_QSEECOM
+	bool "Qualcomm QSEECOM interface driver"
+	depends on QCOM_SCM=y
+	select AUXILIARY_BUS
+	help
+	  Various Qualcomm SoCs have a Secure Execution Environment (SEE) running
+	  in the Trust Zone. This module provides an interface to that via the
+	  QSEECOM mechanism, using SCM calls.
+
+	  The QSEECOM interface allows, among other things, access to applications
+	  running in the SEE. An example of such an application is 'uefisecapp',
+	  which is required to access UEFI variables on certain systems. If
+	  selected, the interface will also attempt to detect and register client
+	  devices for supported applications.
+
+	  Select Y here to enable the QSEECOM interface driver.
+
+config QCOM_QSEECOM_UEFISECAPP
+	bool "Qualcomm SEE UEFI Secure App client driver"
+	depends on QCOM_QSEECOM
+	depends on EFI
+	help
+	  Various Qualcomm SoCs do not allow direct access to EFI variables.
+	  Instead, these need to be accessed via the UEFI Secure Application
+	  (uefisecapp), residing in the Secure Execution Environment (SEE).
+
+	  This module provides a client driver for uefisecapp, installing efivar
+	  operations to allow the kernel accessing EFI variables, and via that also
+	  provide user-space with access to EFI variables via efivarfs.
+
+	  Select Y here to provide access to EFI variables on the aforementioned
+	  platforms.
+
+config QCOM_TEE_UEFISECAPP
+	tristate "Qualcomm TEE UEFI Secure App client driver"
+	depends on QCOMTEE
+	depends on EFI
+	help
+	  The QSEECOM protocol used for communicating with the Qualcomm Trusted
+	  Execution Environment (QTEE) is deprecated and replaced with the SMCInvoke
+	  protocol starting with the Qualcomm SM8x50 series. On platforms where the
+	  QSEECOM protocol still works (the QSEECOM driver probes) the driver does
+	  not support a listener interface with QTEE to enable writing of
+	  non-volatile EFI variables (via listener requests to Linux) in the Replay
+	  Protected Memory Block (RPMB) located on UFS/eMMC storage.
+	  Therefore on such platforms, the TEE based uefisecapp client driver
+	  (which communicates with QTEE via the SMCInvoke protocol) must be used
+	  to update such EFI variables through the RPMB service hosted in the QTEE
+	  supplicant user-space daemon (github.com/qualcomm/minkipc) which forwards
+	  RPMB packets to the RPMB device.
+	  NOTE: Qualcomm Compute platforms with SPI-NOR storage are an exception to
+	  this scenario. Since they do not have a firmware running on their SPI-NOR
+	  storage controller which must be programmed with a RPMB key, QTEE has a
+	  SPI-NOR driver which holds the key, and so the QSEECOM driver can be used
+	  for updating EFI variables on these platforms because QTEE never makes a
+	  listener request to Linux (QTEE doesn't need the Linux SPI-NOR driver).
+
+	  This module provides a TEE client driver for uefisecapp, installing efivar
+	  operations to allow the kernel and user-space access to EFI variables.
+
+	  Select m here to provide access to EFI variables on the aforementioned
+	  platforms if your Linux distribution has QTEE supplicant installed and
+	  running.
+
+config QCOM_MEMORY_DUMP_V2
+	tristate "QCOM Memory Dump V2 Support"
+	depends on QCOM_TZMEM
+	depends on CMA
+	help
+	  This enables memory dump feature. It allows various client
+	  subsystems to register respective dump regions. At the time
+	  of deadlocks or cpu hangs these dump regions are captured to
+	  give a snapshot of the system at the time of the crash.
+
+config QCOM_MEMORY_DUMP_DEV
+	tristate "QCOM Memory Dump V2 device stub"
+	depends on QCOM_MEMORY_DUMP_V2
+	help
+	  Device stub for memory dump V2 driver.
+
+endmenu
